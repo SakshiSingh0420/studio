@@ -3,145 +3,61 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * SOVEREIGN CREDIT RATING PLATFORM - SECURITY RULES PHILOSOPHY
+     * SOVEREIGN CREDIT RATING PLATFORM - SECURITY RULES
      * 
-     * Core Philosophy: This ruleset implements a Role-Based Access Control (RBAC) model 
-     * using a "Database Access Control" (DBAC) pattern. Administrative privileges 
-     * are determined by the existence of a document in the '/roles_admin' collection.
-     * 
-     * Data Structure:
-     * - Global Configurations: /ratingModels, /ratingScales (and sub-mapping entries).
-     * - Operational Data: /countries and its subcollections /factSheets and /sovereignRatings.
-     * - Role Management: /roles_admin.
-     * 
-     * Key Security Decisions:
-     * - Public Read (Authenticated): All primary data (Countries, Models, Scales, Ratings) 
-     *   is readable by any signed-in user to support the dashboard and analytical views.
-     * - Admin-Only Writes: Modifications to the sovereign data, models, and scales 
-     *   are strictly restricted to users verified as administrators.
-     * - Prototyping Flexibility: These rules enforce strict authorization (who can access) 
-     *   but remain flexible on data schema (what is sent) to allow for rapid development.
-     * 
-     * Denormalization for Authorization:
-     * - Path-based authorization is used extensively. Documents nested under /countries/{countryId} 
-     *   implicitly inherit the context of the parent country, though currently access 
-     *   is broad for all authenticated users.
+     * Simplified rules for prototyping:
+     * - Public Read: Anyone can view countries, ratings, and fact sheets.
+     * - Public Create: Anyone can execute a rating session.
+     * - Admin Writes: Roles/Admin management is restricted.
      */
 
-    // --- GLOBAL HELPER FUNCTIONS ---
-
-    /** Checks if the request is made by a signed-in user. */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /** Checks if the authenticated user's UID matches the provided userId. */
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    /** 
-     * Checks if the user has an administrative role. 
-     * Uses 'Existence over Content' - the presence of a doc in roles_admin grants the role.
-     */
     function isAdmin() {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
-    /** Helper for destructive or state-changing operations to ensure existence and admin status. */
-    function isExistingAdmin() {
-      return isAdmin() && resource != null;
-    }
-
-    // --- COLLECTION RULES ---
-
-    /**
-     * @description Rules for the admin role registry.
-     * @path /roles_admin/{userId}
-     * @allow (get) If the user is checking their own admin status.
-     * @deny (create, update, delete) Denied to prevent users from elevating their own privileges.
-     * @principle "Existence over Content" for DBAC; protects the source of truth for authorization.
-     */
+    // Admin role registry
     match /roles_admin/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      allow get: if request.auth.uid == userId || isAdmin();
       allow list: if isAdmin();
-      allow create, update, delete: if false; // Roles must be managed via Console or Admin SDK.
+      allow create, update, delete: if false; 
     }
 
-    /**
-     * @description Primary storage for sovereign country entities.
-     * @path /countries/{countryId}
-     * @allow (get, list) Any authenticated user can view country lists.
-     * @allow (create) Any admin can add a new country.
-     * @deny (update, delete) Non-admin users attempting to modify sovereign data.
-     * @principle Authenticated global read with admin-controlled writes.
-     */
+    // Sovereign country entities
     match /countries/{countryId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-
-      /**
-       * @description Historical or current sovereign credit ratings for a specific country.
-       * @path /countries/{countryId}/sovereignRatings/{sovereignRatingId}
-       * @allow (create) Admin creating a rating, validating path consistency with 'countryId'.
-       * @deny (create) Mismatched countryId in the document body versus the path.
-       * @principle Relational integrity enforcement for nested resources.
-       */
-      match /sovereignRatings/{sovereignRatingId} {
-        allow get, list: if isSignedIn();
-        allow create: if isAdmin() && request.resource.data.countryId == countryId;
-        allow update, delete: if isExistingAdmin();
-      }
-
-      /**
-       * @description Economic and demographic data categories for a specific country.
-       * @path /countries/{countryId}/factSheets/{factSheetId}
-       * @allow (get, list) Authenticated reading of country data.
-       * @allow (create) Admin adding data points, ensuring internal 'countryId' matches path.
-       * @principle Path-based subcollection security.
-       */
-      match /factSheets/{factSheetId} {
-        allow get, list: if isSignedIn();
-        allow create: if isAdmin() && request.resource.data.countryId == countryId;
-        allow update, delete: if isExistingAdmin();
-      }
+      allow get, list: if true; 
+      allow create, update, delete: if true; // Simplified for rapid prototyping
     }
 
-    /**
-     * @description Definitions of sovereign credit rating models and weighting factors.
-     * @path /ratingModels/{modelId}
-     * @allow (get, list) Authenticated access for model selection and viewing.
-     * @allow (create, update, delete) Admin-only configuration management.
-     * @principle Global configuration protection.
-     */
+    // Rating results (top-level collection used by app)
+    match /ratings/{ratingId} {
+      allow get, list: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Fact sheets (top-level collection used by app)
+    match /factSheets/{countryId} {
+      allow get, list: if true;
+      allow write: if true;
+    }
+
+    // Configuration data
     match /ratingModels/{modelId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
+      allow get, list: if true;
+      allow write: if isAdmin();
     }
 
-    /**
-     * @description Definitions of rating scales (Standard, Numeric, etc.).
-     * @path /ratingScales/{scaleId}
-     * @allow (get, list) Authenticated access to scale definitions.
-     * @principle Global configuration protection.
-     */
     match /ratingScales/{scaleId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-
-      /**
-       * @description Individual entries within a rating scale defining score ranges.
-       * @path /ratingScales/{scaleId}/mappingEntries/{mappingEntryId}
-       * @allow (create) Admin adding entries, ensuring internal 'ratingScaleId' matches path.
-       * @principle Consistent relational link between scales and mapping entries.
-       */
+      allow get, list: if true;
+      allow write: if isAdmin();
+      
       match /mappingEntries/{mappingEntryId} {
-        allow get, list: if isSignedIn();
-        allow create: if isAdmin() && request.resource.data.ratingScaleId == scaleId;
-        allow update, delete: if isExistingAdmin();
+        allow get, list: if true;
+        allow write: if isAdmin();
       }
     }
   }

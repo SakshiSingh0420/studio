@@ -1,0 +1,680 @@
+{
+  "entities": {
+    "Country": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Country",
+      "type": "object",
+      "description": "Represents a sovereign country with its key demographic and economic data.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Country entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "Official name of the country."
+        },
+        "region": {
+          "type": "string",
+          "description": "Geographical region the country belongs to (e.g., 'Europe', 'Asia')."
+        },
+        "incomeGroup": {
+          "type": "string",
+          "description": "World Bank income group classification (e.g., 'High income', 'Low income')."
+        },
+        "currency": {
+          "type": "string",
+          "description": "Official currency of the country."
+        },
+        "population": {
+          "type": "number",
+          "description": "Total population of the country."
+        },
+        "gdp": {
+          "type": "number",
+          "description": "Gross Domestic Product of the country (in current USD)."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "region",
+        "incomeGroup",
+        "currency",
+        "population",
+        "gdp"
+      ]
+    },
+    "FactSheet": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "FactSheet",
+      "type": "object",
+      "description": "Stores comprehensive sovereign data for a specific country, categorized by type, used as input for rating models.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the FactSheet entity."
+        },
+        "countryId": {
+          "type": "string",
+          "description": "Reference to the Country this fact sheet belongs to. (Relationship: Country 1:N FactSheet)"
+        },
+        "type": {
+          "type": "string",
+          "description": "Category of the fact sheet data (e.g., 'economic', 'fiscal', 'external', 'financial', 'governance')."
+        },
+        "gdp": {
+          "type": "number",
+          "description": "Gross Domestic Product (in current USD)."
+        },
+        "gdpGrowth": {
+          "type": "number",
+          "description": "Annual GDP growth rate (percentage)."
+        },
+        "inflation": {
+          "type": "number",
+          "description": "Annual inflation rate (percentage)."
+        },
+        "debt": {
+          "type": "number",
+          "description": "Total government debt (in current USD)."
+        },
+        "revenue": {
+          "type": "number",
+          "description": "Government revenue (in current USD)."
+        },
+        "interest": {
+          "type": "number",
+          "description": "Government interest payments on debt (in current USD)."
+        },
+        "fxReserves": {
+          "type": "number",
+          "description": "Foreign exchange reserves (in current USD)."
+        },
+        "imports": {
+          "type": "number",
+          "description": "Total value of imports (in current USD)."
+        },
+        "exports": {
+          "type": "number",
+          "description": "Total value of exports (in current USD)."
+        },
+        "externalDebt": {
+          "type": "number",
+          "description": "Total external debt (in current USD)."
+        },
+        "debtService": {
+          "type": "number",
+          "description": "External debt service payments (in current USD)."
+        },
+        "npl": {
+          "type": "number",
+          "description": "Non-performing loan ratio (percentage)."
+        },
+        "car": {
+          "type": "number",
+          "description": "Capital adequacy ratio (percentage)."
+        },
+        "governanceScore": {
+          "type": "number",
+          "description": "Overall governance score or index."
+        },
+        "politicalStability": {
+          "type": "number",
+          "description": "Index or score representing political stability."
+        },
+        "climateRisk": {
+          "type": "number",
+          "description": "Score or index representing climate change risk."
+        },
+        "defaultHistory": {
+          "type": "boolean",
+          "description": "Indicates if the country has a history of sovereign default."
+        }
+      },
+      "required": [
+        "id",
+        "countryId",
+        "type",
+        "gdp",
+        "gdpGrowth",
+        "inflation",
+        "debt",
+        "revenue",
+        "interest",
+        "fxReserves",
+        "imports",
+        "exports",
+        "externalDebt",
+        "debtService",
+        "npl",
+        "car",
+        "governanceScore",
+        "politicalStability",
+        "climateRisk",
+        "defaultHistory"
+      ]
+    },
+    "RatingModel": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RatingModel",
+      "type": "object",
+      "description": "Defines a specific sovereign credit rating model, including its name, type, and weighting for various factors.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the RatingModel entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "User-friendly name of the rating model (e.g., 'MODEL_A (US-type)')."
+        },
+        "type": {
+          "type": "string",
+          "description": "Categorization of the model type (e.g., 'A', 'B', 'C', 'D')."
+        },
+        "economicWeight": {
+          "type": "number",
+          "description": "Weight assigned to the economic factor in this model (0-100)."
+        },
+        "fiscalWeight": {
+          "type": "number",
+          "description": "Weight assigned to the fiscal factor in this model (0-100)."
+        },
+        "externalWeight": {
+          "type": "number",
+          "description": "Weight assigned to the external factor in this model (0-100)."
+        },
+        "monetaryWeight": {
+          "type": "number",
+          "description": "Weight assigned to the monetary factor in this model (0-100)."
+        },
+        "governanceWeight": {
+          "type": "number",
+          "description": "Weight assigned to the governance/institutions factor in this model (0-100)."
+        },
+        "eventRiskWeight": {
+          "type": "number",
+          "description": "Weight assigned to the event risk factor in this model (0-100)."
+        },
+        "useFlag": {
+          "type": "boolean",
+          "description": "Flag indicating if this model is currently active or available for selection."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "economicWeight",
+        "fiscalWeight",
+        "externalWeight",
+        "monetaryWeight",
+        "governanceWeight",
+        "eventRiskWeight",
+        "useFlag"
+      ]
+    },
+    "RatingScale": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RatingScale",
+      "type": "object",
+      "description": "Defines a specific sovereign credit rating scale, including its name, type, and references to its mapping entries.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the RatingScale entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "User-friendly name of the rating scale (e.g., 'Standard', 'Numeric', 'Moodys')."
+        },
+        "type": {
+          "type": "string",
+          "description": "Categorization of the rating scale type (e.g., 'standard', 'numeric', 'moodys')."
+        },
+        "mappingEntryIds": {
+          "type": "array",
+          "description": "References to the individual mapping entries that define score ranges and ratings for this scale. (Relationship: RatingScale 1:N RatingScaleMappingEntry)",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "mappingEntryIds"
+      ]
+    },
+    "RatingScaleMappingEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RatingScaleMappingEntry",
+      "type": "object",
+      "description": "Represents a single entry within a rating scale, defining a score range and its corresponding rating label.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the RatingScaleMappingEntry entity."
+        },
+        "ratingScaleId": {
+          "type": "string",
+          "description": "Reference to the RatingScale this entry belongs to. (Relationship: RatingScale 1:N RatingScaleMappingEntry)"
+        },
+        "minScore": {
+          "type": "number",
+          "description": "Minimum score for this rating range."
+        },
+        "maxScore": {
+          "type": "number",
+          "description": "Maximum score for this rating range."
+        },
+        "rating": {
+          "type": "string",
+          "description": "The rating label (e.g., 'AAA', 'Aaa', '1') for this score range."
+        }
+      },
+      "required": [
+        "id",
+        "ratingScaleId",
+        "minScore",
+        "maxScore",
+        "rating"
+      ]
+    },
+    "SovereignRating": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "SovereignRating",
+      "type": "object",
+      "description": "Represents a historical or current sovereign credit rating for a country, including all calculation steps, adjustments, and approval status.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the SovereignRating entity."
+        },
+        "countryId": {
+          "type": "string",
+          "description": "Reference to the Country being rated. (Relationship: Country 1:N SovereignRating)"
+        },
+        "modelId": {
+          "type": "string",
+          "description": "Reference to the RatingModel used for this rating. (Relationship: RatingModel 1:N SovereignRating)"
+        },
+        "scaleId": {
+          "type": "string",
+          "description": "Reference to the RatingScale used for this rating. (Relationship: RatingScale 1:N SovereignRating)"
+        },
+        "gdpRaw": {
+          "type": "number",
+          "description": "Gross Domestic Product (raw data snapshot for rating calculation)."
+        },
+        "gdpGrowthRaw": {
+          "type": "number",
+          "description": "Annual GDP growth rate (raw data snapshot for rating calculation)."
+        },
+        "inflationRaw": {
+          "type": "number",
+          "description": "Annual inflation rate (raw data snapshot for rating calculation)."
+        },
+        "debtRaw": {
+          "type": "number",
+          "description": "Total government debt (raw data snapshot for rating calculation)."
+        },
+        "revenueRaw": {
+          "type": "number",
+          "description": "Government revenue (raw data snapshot for rating calculation)."
+        },
+        "interestRaw": {
+          "type": "number",
+          "description": "Government interest payments on debt (raw data snapshot for rating calculation)."
+        },
+        "fxReservesRaw": {
+          "type": "number",
+          "description": "Foreign exchange reserves (raw data snapshot for rating calculation)."
+        },
+        "importsRaw": {
+          "type": "number",
+          "description": "Total value of imports (raw data snapshot for rating calculation)."
+        },
+        "exportsRaw": {
+          "type": "number",
+          "description": "Total value of exports (raw data snapshot for rating calculation)."
+        },
+        "externalDebtRaw": {
+          "type": "number",
+          "description": "Total external debt (raw data snapshot for rating calculation)."
+        },
+        "debtServiceRaw": {
+          "type": "number",
+          "description": "External debt service payments (raw data snapshot for rating calculation)."
+        },
+        "nplRaw": {
+          "type": "number",
+          "description": "Non-performing loan ratio (raw data snapshot for rating calculation)."
+        },
+        "carRaw": {
+          "type": "number",
+          "description": "Capital adequacy ratio (raw data snapshot for rating calculation)."
+        },
+        "governanceScoreRaw": {
+          "type": "number",
+          "description": "Overall governance score or index (raw data snapshot for rating calculation)."
+        },
+        "politicalStabilityRaw": {
+          "type": "number",
+          "description": "Index or score representing political stability (raw data snapshot for rating calculation)."
+        },
+        "climateRiskRaw": {
+          "type": "number",
+          "description": "Score or index representing climate change risk (raw data snapshot for rating calculation)."
+        },
+        "defaultHistoryRaw": {
+          "type": "boolean",
+          "description": "Indicates if the country has a history of sovereign default (raw data snapshot for rating calculation)."
+        },
+        "debtToGdpDerived": {
+          "type": "number",
+          "description": "Calculated ratio of debt to GDP."
+        },
+        "interestToRevenueDerived": {
+          "type": "number",
+          "description": "Calculated ratio of interest payments to government revenue."
+        },
+        "reserveCoverDerived": {
+          "type": "number",
+          "description": "Calculated ratio of foreign exchange reserves to imports."
+        },
+        "externalDebtServiceRatioDerived": {
+          "type": "number",
+          "description": "Calculated ratio of external debt service to exports."
+        },
+        "economicScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for economic factors (e.g., 1-5)."
+        },
+        "fiscalScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for fiscal factors (e.g., 1-5)."
+        },
+        "externalScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for external factors (e.g., 1-5)."
+        },
+        "monetaryScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for monetary factors (e.g., 1-5)."
+        },
+        "governanceScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for governance/institutions factors (e.g., 1-5)."
+        },
+        "eventRiskScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for event risk factors (e.g., 1-5)."
+        },
+        "nplScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for non-performing loans (e.g., 1-5)."
+        },
+        "carScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for capital adequacy ratio (e.g., 1-5)."
+        },
+        "politicalStabilityScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for political stability (e.g., 1-5)."
+        },
+        "climateRiskScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for climate risk (e.g., 1-5)."
+        },
+        "defaultHistoryScoreTransformed": {
+          "type": "number",
+          "description": "Transformed score for default history (e.g., 1-5)."
+        },
+        "economicWeightedScore": {
+          "type": "number",
+          "description": "Score for economic factors after applying model weights."
+        },
+        "fiscalWeightedScore": {
+          "type": "number",
+          "description": "Score for fiscal factors after applying model weights."
+        },
+        "externalWeightedScore": {
+          "type": "number",
+          "description": "Score for external factors after applying model weights."
+        },
+        "monetaryWeightedScore": {
+          "type": "number",
+          "description": "Score for monetary factors after applying model weights."
+        },
+        "governanceWeightedScore": {
+          "type": "number",
+          "description": "Score for governance/institutions factors after applying model weights."
+        },
+        "eventRiskWeightedScore": {
+          "type": "number",
+          "description": "Score for event risk factors after applying model weights."
+        },
+        "finalScore": {
+          "type": "number",
+          "description": "The aggregated final numerical score before mapping to a rating scale."
+        },
+        "initialRating": {
+          "type": "string",
+          "description": "The rating derived from the final score mapped to the selected scale, before any adjustments."
+        },
+        "adjustedRating": {
+          "type": "string",
+          "description": "The rating after applying any manual adjustments (downgrade/upgrade)."
+        },
+        "overrideRating": {
+          "type": "string",
+          "description": "The final rating after an explicit manual override."
+        },
+        "overrideReason": {
+          "type": "string",
+          "description": "Reason provided for an override rating."
+        },
+        "approvalStatus": {
+          "type": "string",
+          "description": "The current approval status of the rating (e.g., 'Draft', 'Pending Approval', 'Approved', 'Override Approved')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the rating was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the rating was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "countryId",
+        "modelId",
+        "scaleId",
+        "gdpRaw",
+        "gdpGrowthRaw",
+        "inflationRaw",
+        "debtRaw",
+        "revenueRaw",
+        "interestRaw",
+        "fxReservesRaw",
+        "importsRaw",
+        "exportsRaw",
+        "externalDebtRaw",
+        "debtServiceRaw",
+        "nplRaw",
+        "carRaw",
+        "governanceScoreRaw",
+        "politicalStabilityRaw",
+        "climateRiskRaw",
+        "defaultHistoryRaw",
+        "debtToGdpDerived",
+        "interestToRevenueDerived",
+        "reserveCoverDerived",
+        "externalDebtServiceRatioDerived",
+        "economicScoreTransformed",
+        "fiscalScoreTransformed",
+        "externalScoreTransformed",
+        "monetaryScoreTransformed",
+        "governanceScoreTransformed",
+        "eventRiskScoreTransformed",
+        "nplScoreTransformed",
+        "carScoreTransformed",
+        "politicalStabilityScoreTransformed",
+        "climateRiskScoreTransformed",
+        "defaultHistoryScoreTransformed",
+        "economicWeightedScore",
+        "fiscalWeightedScore",
+        "externalWeightedScore",
+        "monetaryWeightedScore",
+        "governanceWeightedScore",
+        "eventRiskWeightedScore",
+        "finalScore",
+        "initialRating",
+        "approvalStatus",
+        "createdAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/countries/{countryId}",
+        "definition": {
+          "entityName": "Country",
+          "schema": {
+            "$ref": "#/backend/entities/Country"
+          },
+          "description": "Stores primary information for each sovereign country. All documents are expected to have the same security posture (e.g., accessible to all authenticated users for read). No denormalized authorization fields currently needed as countries are not user-owned in a multi-tenant fashion.",
+          "params": [
+            {
+              "name": "countryId",
+              "description": "The unique identifier for a specific country."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/countries/{countryId}/factSheets/{factSheetId}",
+        "definition": {
+          "entityName": "FactSheet",
+          "schema": {
+            "$ref": "#/backend/entities/FactSheet"
+          },
+          "description": "Stores comprehensive sovereign data for a specific country, categorized by type. Nested under the `Country` it belongs to. Includes `countryId` for explicit relationship and potential denormalization if `Country` ownership or access rules were to become more granular in the future. Data fields align with the `FactSheet` entity schema.",
+          "params": [
+            {
+              "name": "countryId",
+              "description": "The unique identifier of the parent country."
+            },
+            {
+              "name": "factSheetId",
+              "description": "The unique identifier for a specific fact sheet entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/ratingModels/{modelId}",
+        "definition": {
+          "entityName": "RatingModel",
+          "schema": {
+            "$ref": "#/backend/entities/RatingModel"
+          },
+          "description": "Defines different sovereign credit rating models, including their names, types, and weighting factors. These are global configurations, accessible for read by all authenticated users and writable by administrators. Data fields align with the `RatingModel` entity schema.",
+          "params": [
+            {
+              "name": "modelId",
+              "description": "The unique identifier for a specific rating model."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/ratingScales/{scaleId}",
+        "definition": {
+          "entityName": "RatingScale",
+          "schema": {
+            "$ref": "#/backend/entities/RatingScale"
+          },
+          "description": "Defines different sovereign credit rating scales. These are global configurations, accessible for read by all authenticated users and writable by administrators. Data fields align with the `RatingScale` entity schema, using `mappingEntryIds` to reference subcollection entries.",
+          "params": [
+            {
+              "name": "scaleId",
+              "description": "The unique identifier for a specific rating scale."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/ratingScales/{scaleId}/mappingEntries/{mappingEntryId}",
+        "definition": {
+          "entityName": "RatingScaleMappingEntry",
+          "schema": {
+            "$ref": "#/backend/entities/RatingScaleMappingEntry"
+          },
+          "description": "Represents a single entry within a rating scale, defining a score range and its corresponding rating label. Nested under its parent `RatingScale` for logical grouping and simplified rules. Includes `ratingScaleId` for explicit relationship. Accessible for read by all authenticated users and writable by administrators.",
+          "params": [
+            {
+              "name": "scaleId",
+              "description": "The unique identifier of the parent rating scale."
+            },
+            {
+              "name": "mappingEntryId",
+              "description": "The unique identifier for a specific rating scale mapping entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/countries/{countryId}/sovereignRatings/{sovereignRatingId}",
+        "definition": {
+          "entityName": "SovereignRating",
+          "schema": {
+            "$ref": "#/backend/entities/SovereignRating"
+          },
+          "description": "Represents a historical or current sovereign credit rating for a country, including all calculation steps, adjustments, and approval status. Nested under the `Country` it rates. Includes `countryId`, `modelId`, `scaleId` for explicit relationships and to facilitate Authorization Independence if rules later depend on attributes of these related entities (e.g., `model.useFlag` would need to be denormalized here if required for write rules). Accessible for read by all authenticated users and writable by analysts/administrators. Data fields align with the `SovereignRating` entity schema.",
+          "params": [
+            {
+              "name": "countryId",
+              "description": "The unique identifier of the parent country being rated."
+            },
+            {
+              "name": "sovereignRatingId",
+              "description": "The unique identifier for a specific sovereign rating record."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_admin/{userId}",
+        "definition": {
+          "entityName": "UserRoleAdmin",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores documents where the existence of a document signifies an administrative role for the `userId`. Used for Database Access Control (DBAC) to grant elevated permissions for managing models, scales, and approving ratings. Adheres to 'Existence over Content' for global roles. This is an implicit entity; documents would contain minimal data like a timestamp or a boolean 'isAdmin' field.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user with administrative privileges."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure for the Sovereign Credit Rating Platform is designed to adhere strictly to the core design principles, prioritizing Authorization Independence, Clarity of Intent, DBAC, QAPs, and Invariants. This ensures a secure, scalable, and debuggable system, particularly for the listed `Country` entity and its related data.\n\n**Authorization Independence:** The design minimizes or eliminates the need for `get()` calls in security rules, which is crucial for atomic operations and debuggability. For entities like `FactSheet` and `SovereignRating` which logically belong to a `Country`, they are nested as subcollections (`/countries/{countryId}/factSheets/{factSheetId}` and `/countries/{countryId}/sovereignRatings/{sovereignRatingId}`). This places the `countryId` directly in the path, making country-specific authorization checks direct and efficient without needing to fetch the parent `Country` document. Furthermore, `SovereignRating` explicitly includes `modelId` and `scaleId` as fields. While not strictly denormalizing attributes from `RatingModel` or `RatingScale` at this stage, this explicit referencing allows for future denormalization of authorization-critical attributes (e.g., `model.useFlag` or `scale.type`) directly into the `SovereignRating` document if write rules become dependent on these attributes, thereby preserving authorization independence.\n\n**QAPs (Rules are not Filters):** All collections and subcollections are designed with a homogeneous security posture. \n*   The `/countries` collection is assumed to be publicly readable by all authenticated users for dashboard display. A simple rule like `allow read: if request.auth != null;` (or `allow read: true;` if truly public) would secure list operations effectively. All documents within `countries` will have the same access rights.\n*   Similarly, `/ratingModels`, `/ratingScales`, and their subcollection `/ratingScales/{scaleId}/mappingEntries` are global configuration data. They are designed for consistent read access (e.g., all authenticated users) and restricted write access (e.g., to `admin` roles, secured via a `roles_admin` collection). This homogeneous access pattern makes `list` operations inherently secure, as no filtering is required by the rules.\n*   The nested `factSheets` and `sovereignRatings` collections also maintain this homogeneity within their respective `countryId` scope. Access to `factSheets` and `sovereignRatings` is managed consistently for all documents under a specific `countryId`, ensuring secure `list` operations on these subcollections.\n\n**Overall Design:**\n*   **Structural Segregation:** Top-level collections (`/countries`, `/ratingModels`, `/ratingScales`) and subcollections (`/factSheets`, `/mappingEntries`, `/sovereignRatings`) inherently group data by security posture. For instance, `RatingModel` and `RatingScale` are global configurations, separate from country-specific operational data.\n*   **Access Modeling:** Path-based ownership is utilized for `FactSheet` and `SovereignRating` by nesting them under `Country`. Global roles are supported via a dedicated `/roles_admin/{userId}` collection, adhering to the 'Existence over Content' principle for DBAC.\n*   **Data Clarity:** Wildcards are descriptive (`{countryId}`, `{factSheetId}`). The schemas provided are strictly followed, ensuring predictable document structures and avoiding dynamic keys. The comprehensive `SovereignRating` entity is used as-is, capturing all calculation steps explicitly.\n\nThis structure provides a robust foundation for implementing granular Firestore Security Rules while maintaining high performance and debuggability."
+  }
+}

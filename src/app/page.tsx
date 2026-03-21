@@ -17,8 +17,6 @@ export default function DashboardPage() {
   const { data: countries, isLoading: loadingCountries } = useCollection<Country>(countriesQuery);
 
   // Real-time ratings (Recent activity)
-  // Note: Adjusting query to fetch from top-level if ratings are flat, 
-  // or use collectionGroup if nested. Assuming top-level for dashboard overview.
   const recentRatingsQuery = useMemoFirebase(() => 
     query(collection(db, 'ratings'), orderBy('createdAt', 'desc'), limit(5)), 
   [db]);
@@ -28,18 +26,12 @@ export default function DashboardPage() {
   const allRatingsQuery = useMemoFirebase(() => collection(db, 'ratings'), [db]);
   const { data: allRatings } = useCollection<Rating>(allRatingsQuery);
 
-  // Logging for debugging as requested
+  // Debug logging
   useEffect(() => {
     if (countries) {
       console.log("Firestore Data - Countries:", countries);
     }
   }, [countries]);
-
-  useEffect(() => {
-    if (recentRatingsData) {
-      console.log("Firestore Data - Recent Ratings:", recentRatingsData);
-    }
-  }, [recentRatingsData]);
 
   const stats = {
     countries: countries?.length || 0,
@@ -52,7 +44,7 @@ export default function DashboardPage() {
 
   const recentRatings = (recentRatingsData || []).map(r => ({
     ...r,
-    countryName: countries?.find(c => c.id === r.countryId)?.name || 'Unknown'
+    countryName: countries?.find(c => c.id === r.countryId)?.name || 'Unknown Sovereign'
   }))
 
   if (loadingCountries) {
@@ -139,7 +131,7 @@ export default function DashboardPage() {
                 {(!countries || countries.length === 0) && (
                   <TableRow>
                     <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
-                      No countries found. Add some in the Console or via the Countries page.
+                      No countries found. Add some in the Firebase Console under 'countries' collection.
                     </TableCell>
                   </TableRow>
                 )}

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Search, MapPin, MoreHorizontal } from "lucide-react"
+import { Plus, Search, MapPin, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -18,12 +18,17 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { getCountries, addCountry, Country } from "@/lib/store"
+import { addCountry, Country } from "@/lib/store"
 import { Badge } from "@/components/ui/badge"
+import { useCollection, useMemoFirebase, useFirestore } from "@/firebase"
+import { collection } from "firebase/firestore"
 import Link from "next/link"
 
 export default function CountriesPage() {
-  const [countries, setCountries] = useState<Country[]>([])
+  const db = useFirestore();
+  const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
+  const { data: countries, isLoading } = useCollection<Country>(countriesQuery);
+
   const [search, setSearch] = useState("")
   const [isAdding, setIsAdding] = useState(false)
   const [newCountry, setNewCountry] = useState({
@@ -35,20 +40,32 @@ export default function CountriesPage() {
     gdp: 0
   })
 
-  useEffect(() => {
-    getCountries().then(setCountries)
-  }, [])
-
   const handleAdd = async () => {
-    const created = await addCountry(newCountry)
-    setCountries([...countries, created])
+    if (!newCountry.name || !newCountry.region) return;
+    await addCountry(newCountry)
     setIsAdding(false)
+    setNewCountry({
+      name: "",
+      region: "",
+      incomeGroup: "Middle",
+      currency: "USD",
+      population: 0,
+      gdp: 0
+    })
   }
 
-  const filtered = countries.filter(c => 
+  const filtered = (countries || []).filter(c => 
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.region.toLowerCase().includes(search.toLowerCase())
   )
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
@@ -150,6 +167,11 @@ export default function CountriesPage() {
             </CardContent>
           </Card>
         ))}
+        {filtered.length === 0 && !isLoading && (
+          <div className="col-span-full py-20 text-center border-2 border-dashed rounded-lg bg-muted/20">
+            <p className="text-muted-foreground">No countries found matching your search.</p>
+          </div>
+        )}
       </div>
     </div>
   )

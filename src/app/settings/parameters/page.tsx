@@ -12,8 +12,11 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Plus, Trash2, Edit2, Info, Code } from "lucide-react"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Plus, Trash2, Edit2, Info, Code, Layers } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+
+const CATEGORIES = ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] as const;
 
 export default function ParameterMasterPage() {
   const [params, setParams] = useState<Parameter[]>([])
@@ -32,13 +35,12 @@ export default function ParameterMasterPage() {
   const load = async () => setParams(await getParameters())
   useEffect(() => { load() }, [])
 
-  // Auto-generate slug from name
   const generateSlug = (name: string) => {
     return name
       .toLowerCase()
       .trim()
-      .replace(/[^\w\s-]/g, '') // Remove non-alphanumeric
-      .replace(/[-\s]+/g, '_')   // Spaces/hyphens to underscores
+      .replace(/[^\w\s-]/g, '')
+      .replace(/[-\s]+/g, '_')
   }
 
   const handleNameChange = (name: string) => {
@@ -84,12 +86,19 @@ export default function ParameterMasterPage() {
     }
   }
 
+  const groupedParams = CATEGORIES.reduce((acc, cat) => {
+    acc[cat] = params
+      .filter(p => p.category === cat)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return acc;
+  }, {} as Record<string, Parameter[]>);
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary">Parameter Master</h1>
-          <p className="text-muted-foreground mt-1">Define the analytical factors used across all rating models.</p>
+          <p className="text-muted-foreground mt-1 text-lg">Define and categorize analytical factors for rating frameworks.</p>
         </div>
         <Button onClick={() => {
           setCurrent({
@@ -107,56 +116,79 @@ export default function ParameterMasterPage() {
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="pt-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Identifier (Slug)</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Frequency</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {params.map(p => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-mono text-xs text-primary">{p.slug}</TableCell>
-                  <TableCell className="font-semibold">{p.name}</TableCell>
-                  <TableCell><Badge variant="secondary">{p.category}</Badge></TableCell>
-                  <TableCell>
-                    <Badge variant={p.type === 'derived' ? 'outline' : 'default'} className="capitalize">
-                        {p.type === 'raw' ? 'Raw Data' : 'Derived'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{p.dataSource}</TableCell>
-                  <TableCell className="text-xs">{p.frequency}</TableCell>
-                  <TableCell className="text-right space-x-2">
-                    <Button variant="ghost" size="icon" onClick={() => { setCurrent(p); setIsAdding(true); }}><Edit2 className="w-4 h-4" /></Button>
-                    <Button variant="ghost" size="icon" className="text-destructive" onClick={() => handleDelete(p.id)}><Trash2 className="w-4 h-4" /></Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {params.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
-                    No parameters defined. Create one to begin.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="grid gap-6">
+        <Accordion type="multiple" defaultValue={["Economic"]} className="w-full space-y-4">
+          {CATEGORIES.map((category) => (
+            <AccordionItem key={category} value={category} className="border rounded-lg bg-card px-4 shadow-sm">
+              <AccordionTrigger className="hover:no-underline py-4">
+                <div className="flex items-center gap-3">
+                  <Layers className="w-5 h-5 text-primary opacity-70" />
+                  <span className="text-lg font-semibold">{category}</span>
+                  <Badge variant="secondary" className="ml-2">
+                    {groupedParams[category].length} Factors
+                  </Badge>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-2 pb-6">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="w-[30%]">Name & Identifier</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Frequency</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {groupedParams[category].length > 0 ? (
+                      groupedParams[category].map(p => (
+                        <TableRow key={p.id}>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-foreground">{p.name}</span>
+                              <span className="text-[10px] font-mono text-primary flex items-center gap-1">
+                                <Code className="w-2.5 h-2.5" /> {p.slug}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={p.type === 'derived' ? 'outline' : 'default'} className="capitalize">
+                                {p.type === 'raw' ? 'Raw Data' : 'Derived'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{p.dataSource}</TableCell>
+                          <TableCell className="text-xs">{p.frequency}</TableCell>
+                          <TableCell className="text-right space-x-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setCurrent(p); setIsAdding(true); }}>
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(p.id)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                          No parameters defined in this category.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
 
       <Dialog open={isAdding} onOpenChange={setIsAdding}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Parameter Configuration</DialogTitle>
-            <DialogDescription>Define the metadata and logic for this analytical factor.</DialogDescription>
+            <DialogDescription>Configure the analytical logic and source metadata for this factor.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -178,7 +210,7 @@ export default function ParameterMasterPage() {
                 <Select value={current.category} onValueChange={v => setCurrent({...current, category: v as any})}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

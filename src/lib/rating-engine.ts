@@ -36,6 +36,43 @@ export type RatingScale = {
 
 export type FactSheetData = Record<string, any>;
 
+/**
+ * Simple formula evaluator that replaces parameter IDs with values.
+ * Supports basic operators: +, -, *, /, (, )
+ */
+function evaluateFormula(formula: string, values: Record<string, number>): number {
+  try {
+    // 1. Replace parameter IDs with their values
+    // We sort keys by length descending to avoid partial matches (e.g., 'gdp_growth' vs 'gdp')
+    const sortedKeys = Object.keys(values).sort((a, b) => b.length - a.length);
+    let expression = formula;
+    
+    for (const key of sortedKeys) {
+      const val = values[key] || 0;
+      // Use word boundaries or ensure we match the whole ID
+      const regex = new RegExp(`\\b${key}\\b`, 'g');
+      expression = expression.replace(regex, val.toString());
+    }
+
+    // 2. Basic sanitation: only allow numbers, operators, and whitespace
+    if (/[^-+*/().\d\s]/.test(expression)) {
+      console.warn("Formula contains invalid characters after replacement:", expression);
+      return 0;
+    }
+
+    // 3. Evaluate the result
+    // Note: In a production enterprise app, use a proper expression parser like mathjs.
+    // For this prototype, we use a controlled Function constructor as a safer alternative to eval().
+    const result = new Function(`return ${expression}`)();
+    
+    if (!isFinite(result)) return 0; // Handle division by zero
+    return result;
+  } catch (e) {
+    console.error("Formula evaluation error:", e);
+    return 0;
+  }
+}
+
 export function scoreMetric(value: number, config: ModelTransformation): number {
   const { thresholds, inverse } = config;
   if (inverse) {
@@ -59,13 +96,25 @@ export function runDynamicRating(
   scale: RatingScale,
   parameters: Parameter[]
 ) {
-  const scores: Record<string, number> = {};
   const weightedScores: Record<string, number> = {};
   const transformedScores: Record<string, number> = {};
+  const derivedMetrics: Record<string, number> = {};
   
+  // Create a working copy of values
   const finalValues = { ...values };
 
-  // Note: Future enhancement could include formula parsing for derived parameters here
+  // 1. Calculate all derived parameters first
+  const derivedParams = parameters.filter(p => p.type === 'derived' && p.formula);
+  
+  // We may need multiple passes if derived parameters depend on other derived parameters
+  // For simplicity in this version, we'll do one pass.
+  derivedParams.forEach(p => {
+    const computedValue = evaluateFormula(p.formula!, finalValues);
+    derivedMetrics[p.id] = computedValue;
+    finalValues[p.id] = computedValue; // Add to pool for scoring or subsequent derivations
+  });
+
+  // 2. Execute scoring based on the model weights
   Object.keys(model.weights).forEach((paramId) => {
     const val = finalValues[paramId] || 0;
     const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
@@ -87,6 +136,6 @@ export function runDynamicRating(
     weightedScores,
     finalScore: normalizedScore,
     initialRating: mapping?.rating || "NR",
-    derivedMetrics: {} 
+    derivedMetrics 
   };
 }

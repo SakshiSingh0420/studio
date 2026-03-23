@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -26,9 +25,10 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2 } from "lucide-react"
+import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2, Info } from "lucide-react"
 import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
 import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -89,7 +89,7 @@ export default function RatingExecutionPage() {
             toast({ title: "Configuration Error", description: "Please select a model and scale." })
             return
         }
-        const result = runDynamicRating(factSheet, selectedModel, selectedScale, parameters)
+        const result = runDynamicRating(factSheet as Record<string, number>, selectedModel, selectedScale, parameters)
         setCalculation(result)
         setStep("calculate")
     }
@@ -118,13 +118,12 @@ export default function RatingExecutionPage() {
         if (!calculation || !country || !selectedModel || !selectedScale) return;
         setIsGenerating(true)
         try {
-            // Mapping for Genkit flow (matching its expected schema)
             const rationaleInput: any = {
                 country,
                 factSheetData: factSheet,
                 model: {
                     ...selectedModel,
-                    type: 'A', // Defaulting type for compatible rationale prompt
+                    type: 'A',
                     weights: {
                         economic: selectedModel.weights['economic'] || 20,
                         fiscal: selectedModel.weights['fiscal'] || 20,
@@ -167,7 +166,7 @@ export default function RatingExecutionPage() {
             weightedScores: calculation.weightedScores,
             finalScore: calculation.finalScore,
             initialRating: calculation.initialRating,
-            adjustedRating: calculation.initialRating, // Placeholder for notch logic
+            adjustedRating: calculation.initialRating,
             approvalStatus: 'pending',
             reason: rationale
         })
@@ -177,6 +176,9 @@ export default function RatingExecutionPage() {
 
     if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>
     if (!country) return <div>Country not found.</div>
+
+    const rawParameters = parameters.filter(p => p.type === 'raw');
+    const derivedParameters = parameters.filter(p => p.type === 'derived');
 
     return (
         <div className="space-y-8">
@@ -259,7 +261,7 @@ export default function RatingExecutionPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {parameters.map((p) => (
+                                    {rawParameters.map((p) => (
                                         <div key={p.id} className="space-y-1">
                                             <label className="text-xs font-medium text-muted-foreground">{p.name}</label>
                                             <Input 
@@ -270,12 +272,37 @@ export default function RatingExecutionPage() {
                                             />
                                         </div>
                                     ))}
-                                    {parameters.length === 0 && (
+                                    {rawParameters.length === 0 && (
                                         <div className="col-span-full py-8 text-center border rounded border-dashed">
-                                            <p className="text-sm text-muted-foreground">No parameters defined in Parameter Master.</p>
+                                            <p className="text-sm text-muted-foreground">No raw parameters defined in Parameter Master.</p>
                                         </div>
                                     )}
                                 </div>
+
+                                {derivedParameters.length > 0 && (
+                                    <div className="mt-8 pt-6 border-t">
+                                        <h3 className="text-sm font-bold mb-4 flex items-center gap-2">
+                                            Derived Parameters (Calculated on Run)
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger><Info className="w-3 h-3 text-muted-foreground" /></TooltipTrigger>
+                                                    <TooltipContent>These values are automatically computed from your raw inputs using the defined formulas.</TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {derivedParameters.map(p => (
+                                                <div key={p.id} className="p-3 bg-muted/30 rounded border flex justify-between items-center">
+                                                    <div>
+                                                        <p className="text-xs font-semibold">{p.name}</p>
+                                                        <p className="text-[10px] text-muted-foreground font-mono">{p.formula}</p>
+                                                    </div>
+                                                    <Badge variant="secondary">Derived</Badge>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     )}
@@ -285,14 +312,14 @@ export default function RatingExecutionPage() {
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Analytical Breakdown</CardTitle>
-                                    <CardDescription>Visualizing the path from raw data to final credit score.</CardDescription>
+                                    <CardDescription>Visualizing the path from raw/derived data to final credit score.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <Table className="financial-table border rounded-md overflow-hidden">
                                         <TableHeader>
                                             <TableRow>
                                                 <TableHead>Pillar</TableHead>
-                                                <TableHead>Raw Value</TableHead>
+                                                <TableHead>Value (Final)</TableHead>
                                                 <TableHead>Transform Score (1-5)</TableHead>
                                                 <TableHead>Weight</TableHead>
                                                 <TableHead>Weighted Score</TableHead>
@@ -301,10 +328,20 @@ export default function RatingExecutionPage() {
                                         <TableBody>
                                             {Object.keys(selectedModel.weights).map((pid) => {
                                                 const p = parameters.find(param => param.id === pid)
+                                                const isDerived = p?.type === 'derived';
+                                                const val = isDerived ? calculation.derivedMetrics[pid] : factSheet[pid];
+                                                
                                                 return (
                                                     <TableRow key={pid}>
-                                                        <TableCell className="font-semibold">{p?.name || pid}</TableCell>
-                                                        <TableCell>{factSheet[pid] || 0}</TableCell>
+                                                        <TableCell className="font-semibold">
+                                                            <div className="flex flex-col">
+                                                                <span>{p?.name || pid}</span>
+                                                                {isDerived && <span className="text-[10px] text-muted-foreground font-mono">{p?.formula}</span>}
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell className={isDerived ? "text-primary font-bold" : ""}>
+                                                            {typeof val === 'number' ? val.toLocaleString(undefined, { maximumFractionDigits: 2 }) : (val || 0)}
+                                                        </TableCell>
                                                         <TableCell className="text-center font-bold">{calculation.transformedScores[pid]}</TableCell>
                                                         <TableCell>{selectedModel.weights[pid]}%</TableCell>
                                                         <TableCell className="text-right font-mono bg-muted/20">

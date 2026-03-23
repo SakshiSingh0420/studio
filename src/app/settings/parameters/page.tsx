@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Plus, Trash2, Edit2, Database, Info } from "lucide-react"
+import { Plus, Trash2, Edit2, Info, Code } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 export default function ParameterMasterPage() {
@@ -20,6 +20,7 @@ export default function ParameterMasterPage() {
   const [isAdding, setIsAdding] = useState(false)
   const [current, setCurrent] = useState<Partial<Parameter>>({
     name: "",
+    slug: "",
     category: "Economic",
     type: "raw",
     dataSource: "Manual",
@@ -31,12 +32,33 @@ export default function ParameterMasterPage() {
   const load = async () => setParams(await getParameters())
   useEffect(() => { load() }, [])
 
+  // Auto-generate slug from name
+  const generateSlug = (name: string) => {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '') // Remove non-alphanumeric
+      .replace(/[-\s]+/g, '_')   // Spaces/hyphens to underscores
+  }
+
+  const handleNameChange = (name: string) => {
+    setCurrent({
+      ...current,
+      name,
+      slug: generateSlug(name)
+    })
+  }
+
   const handleSave = async () => {
-    if (!current.name) return
+    if (!current.name || !current.slug) {
+        toast({ title: "Validation Error", description: "Name and Slug are required.", variant: "destructive" })
+        return
+    }
     await saveParameter(current as Parameter)
     setIsAdding(false)
     setCurrent({ 
       name: "", 
+      slug: "",
       category: "Economic", 
       type: "raw", 
       dataSource: "Manual", 
@@ -72,6 +94,7 @@ export default function ParameterMasterPage() {
         <Button onClick={() => {
           setCurrent({
             name: "",
+            slug: "",
             category: "Economic",
             type: "raw",
             dataSource: "Manual",
@@ -89,6 +112,7 @@ export default function ParameterMasterPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Identifier (Slug)</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Type</TableHead>
@@ -100,17 +124,13 @@ export default function ParameterMasterPage() {
             <TableBody>
               {params.map(p => (
                 <TableRow key={p.id}>
+                  <TableCell className="font-mono text-xs text-primary">{p.slug}</TableCell>
                   <TableCell className="font-semibold">{p.name}</TableCell>
                   <TableCell><Badge variant="secondary">{p.category}</Badge></TableCell>
-                  <TableCell className="capitalize">
-                    <div className="flex flex-col">
-                      <span>{p.type}</span>
-                      {p.type === 'derived' && p.formula && (
-                        <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[150px]">
-                          {p.formula}
-                        </span>
-                      )}
-                    </div>
+                  <TableCell>
+                    <Badge variant={p.type === 'derived' ? 'outline' : 'default'} className="capitalize">
+                        {p.type === 'raw' ? 'Raw Data' : 'Derived'}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.dataSource}</TableCell>
                   <TableCell className="text-xs">{p.frequency}</TableCell>
@@ -122,7 +142,7 @@ export default function ParameterMasterPage() {
               ))}
               {params.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                     No parameters defined. Create one to begin.
                   </TableCell>
                 </TableRow>
@@ -139,9 +159,17 @@ export default function ParameterMasterPage() {
             <DialogDescription>Define the metadata and logic for this analytical factor.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-xs font-bold uppercase text-muted-foreground">Parameter Name</label>
-              <Input value={current.name} onChange={e => setCurrent({...current, name: e.target.value})} placeholder="e.g. Debt to GDP Ratio" />
+            <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Parameter Name</label>
+                    <Input value={current.name} onChange={e => handleNameChange(e.target.value)} placeholder="e.g. Debt to GDP" />
+                </div>
+                <div className="grid gap-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1">
+                        Internal Slug <Code className="w-3 h-3" />
+                    </label>
+                    <Input value={current.slug} onChange={e => setCurrent({...current, slug: e.target.value})} placeholder="debt_to_gdp" className="font-mono" />
+                </div>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -176,10 +204,10 @@ export default function ParameterMasterPage() {
                   <Input 
                     value={current.formula || ""} 
                     onChange={e => setCurrent({...current, formula: e.target.value})} 
-                    placeholder="e.g. (debt / gdp) * 100"
+                    placeholder="e.g. debt / gdp"
                     className="font-mono text-sm"
                   />
-                  <p className="text-[10px] text-muted-foreground">Use parameter names or identifiers in your expression.</p>
+                  <p className="text-[10px] text-muted-foreground">Use parameter <b>slugs</b> in your expression.</p>
                 </div>
                 
                 <div className="grid gap-2">
@@ -194,14 +222,11 @@ export default function ParameterMasterPage() {
                               checked={current.dependentParameters?.includes(p.id)}
                               onCheckedChange={() => toggleDependency(p.id)}
                             />
-                            <label htmlFor={`dep-${p.id}`} className="text-xs cursor-pointer truncate">
-                              {p.name}
+                            <label htmlFor={`dep-${p.id}`} className="text-xs cursor-pointer truncate flex items-center gap-2">
+                              {p.name} <span className="text-muted-foreground opacity-50 font-mono">({p.slug})</span>
                             </label>
                           </div>
                         ))}
-                        {params.filter(p => p.id !== current.id).length === 0 && (
-                          <p className="text-[10px] text-center text-muted-foreground py-4">No other parameters available.</p>
-                        )}
                       </div>
                     </ScrollArea>
                   </Card>
@@ -212,7 +237,16 @@ export default function ParameterMasterPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Data Source</label>
-                <Input value={current.dataSource} onChange={e => setCurrent({...current, dataSource: e.target.value})} placeholder="e.g. IMF, World Bank" />
+                <Select value={current.dataSource} onValueChange={v => setCurrent({...current, dataSource: v as any})}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="IMF (Auto)">IMF (Auto)</SelectItem>
+                    <SelectItem value="World Bank (Auto)">World Bank (Auto)</SelectItem>
+                    <SelectItem value="Manual">Manual</SelectItem>
+                    <SelectItem value="Semi-Auto (Editable)">Semi-Auto (Editable)</SelectItem>
+                    <SelectItem value="Computed">Computed</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-2">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Reporting Frequency</label>

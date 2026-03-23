@@ -29,6 +29,7 @@ import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2
 import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
 import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Badge } from "@/components/ui/badge"
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -100,9 +101,9 @@ export default function RatingExecutionPage() {
         try {
             const suggested = await suggestFactSheetData({ countryName: country.name })
             const merged = { ...factSheet }
-            Object.keys(suggested).forEach(key => {
-                if ((suggested as any)[key] !== null) {
-                    (merged as any)[key] = (suggested as any)[key]
+            parameters.forEach(p => {
+                if (p.type === 'raw' && (suggested as any)[p.slug] !== undefined) {
+                    merged[p.id] = (suggested as any)[p.slug]
                 }
             })
             setFactSheet(merged)
@@ -121,22 +122,8 @@ export default function RatingExecutionPage() {
             const rationaleInput: any = {
                 country,
                 factSheetData: factSheet,
-                model: {
-                    ...selectedModel,
-                    type: 'A',
-                    weights: {
-                        economic: selectedModel.weights['economic'] || 20,
-                        fiscal: selectedModel.weights['fiscal'] || 20,
-                        external: selectedModel.weights['external'] || 20,
-                        monetary: selectedModel.weights['monetary'] || 20,
-                        governance: selectedModel.weights['governance'] || 20,
-                        eventRisk: selectedModel.weights['eventRisk'] || 0,
-                    }
-                },
-                ratingScale: {
-                    ...selectedScale,
-                    type: 'standard'
-                },
+                model: selectedModel,
+                ratingScale: selectedScale,
                 derivedMetrics: calculation.derivedMetrics,
                 transformedScores: calculation.transformedScores,
                 weightedScores: calculation.weightedScores,
@@ -263,7 +250,10 @@ export default function RatingExecutionPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {rawParameters.map((p) => (
                                         <div key={p.id} className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground">{p.name}</label>
+                                            <label className="text-xs font-medium text-muted-foreground flex justify-between">
+                                                <span>{p.name}</span>
+                                                <span className="text-[10px] opacity-40 font-mono">{p.slug}</span>
+                                            </label>
                                             <Input 
                                                 type="number" 
                                                 value={factSheet[p.id] || 0} 
@@ -336,7 +326,7 @@ export default function RatingExecutionPage() {
                                                         <TableCell className="font-semibold">
                                                             <div className="flex flex-col">
                                                                 <span>{p?.name || pid}</span>
-                                                                {isDerived && <span className="text-[10px] text-muted-foreground font-mono">{p?.formula}</span>}
+                                                                <span className="text-[10px] text-muted-foreground font-mono">{isDerived ? p?.formula : p?.slug}</span>
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className={isDerived ? "text-primary font-bold" : ""}>

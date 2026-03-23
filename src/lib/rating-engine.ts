@@ -1,10 +1,10 @@
-
 export type Parameter = {
   id: string;
   name: string;
   category: "Economic" | "Fiscal" | "External" | "Monetary" | "Institutional" | "ESG";
   type: "raw" | "derived";
   formula?: string;
+  dependentParameters?: string[];
   dataSource: string;
   frequency: string;
 };
@@ -65,6 +65,7 @@ export function runDynamicRating(
   
   const finalValues = { ...values };
 
+  // Note: Future enhancement could include formula parsing for derived parameters here
   Object.keys(model.weights).forEach((paramId) => {
     const val = finalValues[paramId] || 0;
     const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
@@ -86,6 +87,6 @@ export function runDynamicRating(
     weightedScores,
     finalScore: normalizedScore,
     initialRating: mapping?.rating || "NR",
-    derivedMetrics: {} // Placeholder for future formula expansion
+    derivedMetrics: {} 
   };
 }

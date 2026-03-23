@@ -13,14 +13,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Plus, Trash2, Edit2, Info, Code, Layers } from "lucide-react"
+import { Plus, Trash2, Edit2, Info, Code, Layers, Search, XCircle, Filter } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 const CATEGORIES = ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] as const;
+const SOURCES = ["IMF (Auto)", "World Bank (Auto)", "Manual", "Semi-Auto (Editable)", "Computed"] as const;
 
 export default function ParameterMasterPage() {
   const [params, setParams] = useState<Parameter[]>([])
   const [isAdding, setIsAdding] = useState(false)
+  
+  // Filter States
+  const [searchTerm, setSearchTerm] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [typeFilter, setTypeFilter] = useState<string>("all")
+  const [sourceFilter, setSourceFilter] = useState<string>("all")
+
   const [current, setCurrent] = useState<Partial<Parameter>>({
     name: "",
     slug: "",
@@ -86,12 +94,40 @@ export default function ParameterMasterPage() {
     }
   }
 
+  // Filtering Logic
+  const filteredParams = params.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         p.slug.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = categoryFilter === "all" || p.category === categoryFilter;
+    const matchesType = typeFilter === "all" || p.type === typeFilter;
+    const matchesSource = sourceFilter === "all" || p.dataSource === sourceFilter;
+    
+    return matchesSearch && matchesCategory && matchesType && matchesSource;
+  })
+
+  const resetFilters = () => {
+    setSearchTerm("")
+    setCategoryFilter("all")
+    setTypeFilter("all")
+    setSourceFilter("all")
+  }
+
   const groupedParams = CATEGORIES.reduce((acc, cat) => {
-    acc[cat] = params
-      .filter(p => p.category === cat)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    // Only show categories if they match the category filter or if filter is "all"
+    if (categoryFilter === "all" || categoryFilter === cat) {
+      acc[cat] = filteredParams
+        .filter(p => p.category === cat)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      acc[cat] = [];
+    }
     return acc;
   }, {} as Record<string, Parameter[]>);
+
+  const activeFilterCount = (searchTerm ? 1 : 0) + 
+                           (categoryFilter !== "all" ? 1 : 0) + 
+                           (typeFilter !== "all" ? 1 : 0) + 
+                           (sourceFilter !== "all" ? 1 : 0);
 
   return (
     <div className="space-y-8">
@@ -116,72 +152,146 @@ export default function ParameterMasterPage() {
         </Button>
       </div>
 
+      <Card className="bg-muted/30 border-none shadow-none">
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search by name or slug..." 
+                className="pl-10"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="raw">Raw Data</SelectItem>
+                  <SelectItem value="derived">Derived</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Sources</SelectItem>
+                  {SOURCES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" onClick={resetFilters} className="text-muted-foreground">
+                  <XCircle className="w-4 h-4 mr-2" /> Clear
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+            <div className="flex items-center gap-2">
+              <Filter className="w-3 h-3" />
+              <span>Showing <b>{filteredParams.length}</b> of {params.length} parameters</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6">
-        <Accordion type="multiple" defaultValue={["Economic"]} className="w-full space-y-4">
-          {CATEGORIES.map((category) => (
-            <AccordionItem key={category} value={category} className="border rounded-lg bg-card px-4 shadow-sm">
-              <AccordionTrigger className="hover:no-underline py-4">
-                <div className="flex items-center gap-3">
-                  <Layers className="w-5 h-5 text-primary opacity-70" />
-                  <span className="text-lg font-semibold">{category}</span>
-                  <Badge variant="secondary" className="ml-2">
-                    {groupedParams[category].length} Factors
-                  </Badge>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="pt-2 pb-6">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead className="w-[30%]">Name & Identifier</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Frequency</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {groupedParams[category].length > 0 ? (
-                      groupedParams[category].map(p => (
-                        <TableRow key={p.id}>
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span className="font-semibold text-foreground">{p.name}</span>
-                              <span className="text-[10px] font-mono text-primary flex items-center gap-1">
-                                <Code className="w-2.5 h-2.5" /> {p.slug}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={p.type === 'derived' ? 'outline' : 'default'} className="capitalize">
-                                {p.type === 'raw' ? 'Raw Data' : 'Derived'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{p.dataSource}</TableCell>
-                          <TableCell className="text-xs">{p.frequency}</TableCell>
-                          <TableCell className="text-right space-x-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setCurrent(p); setIsAdding(true); }}>
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(p.id)}>
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+        <Accordion type="multiple" defaultValue={CATEGORIES as any} className="w-full space-y-4">
+          {CATEGORIES.map((category) => {
+            const categoryParams = groupedParams[category] || [];
+            if (categoryFilter !== "all" && categoryFilter !== category) return null;
+            if (categoryParams.length === 0 && activeFilterCount > 0) return null;
+
+            return (
+              <AccordionItem key={category} value={category} className="border rounded-lg bg-card px-4 shadow-sm">
+                <AccordionTrigger className="hover:no-underline py-4">
+                  <div className="flex items-center gap-3">
+                    <Layers className="w-5 h-5 text-primary opacity-70" />
+                    <span className="text-lg font-semibold">{category}</span>
+                    <Badge variant="secondary" className="ml-2">
+                      {categoryParams.length} Factors
+                    </Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pt-2 pb-6">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="w-[30%]">Name & Identifier</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Source</TableHead>
+                        <TableHead>Frequency</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {categoryParams.length > 0 ? (
+                        categoryParams.map(p => (
+                          <TableRow key={p.id}>
+                            <TableCell>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-foreground">{p.name}</span>
+                                <span className="text-[10px] font-mono text-primary flex items-center gap-1">
+                                  <Code className="w-2.5 h-2.5" /> {p.slug}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={p.type === 'derived' ? 'outline' : 'default'} className="capitalize">
+                                  {p.type === 'raw' ? 'Raw Data' : 'Derived'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{p.dataSource}</TableCell>
+                            <TableCell className="text-xs">{p.frequency}</TableCell>
+                            <TableCell className="text-right space-x-1">
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setCurrent(p); setIsAdding(true); }}>
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(p.id)}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                            No parameters found matching filters.
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                          No parameters defined in this category.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
+                      )}
+                    </TableBody>
+                  </Table>
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
         </Accordion>
+        
+        {filteredParams.length === 0 && activeFilterCount > 0 && (
+          <div className="py-20 text-center border-2 border-dashed rounded-lg bg-muted/20">
+            <Search className="w-10 h-10 text-muted-foreground opacity-20 mx-auto mb-4" />
+            <p className="text-muted-foreground font-medium">No parameters match your search criteria.</p>
+            <Button variant="link" onClick={resetFilters} className="mt-2">Clear all filters</Button>
+          </div>
+        )}
       </div>
 
       <Dialog open={isAdding} onOpenChange={setIsAdding}>
@@ -272,11 +382,7 @@ export default function ParameterMasterPage() {
                 <Select value={current.dataSource} onValueChange={v => setCurrent({...current, dataSource: v as any})}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="IMF (Auto)">IMF (Auto)</SelectItem>
-                    <SelectItem value="World Bank (Auto)">World Bank (Auto)</SelectItem>
-                    <SelectItem value="Manual">Manual</SelectItem>
-                    <SelectItem value="Semi-Auto (Editable)">Semi-Auto (Editable)</SelectItem>
-                    <SelectItem value="Computed">Computed</SelectItem>
+                    {SOURCES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

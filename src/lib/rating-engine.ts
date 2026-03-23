@@ -34,6 +34,8 @@ export type RatingScale = {
   mapping: RatingScaleEntry[];
 };
 
+export type FactSheetData = Record<string, any>;
+
 export function scoreMetric(value: number, config: ModelTransformation): number {
   const { thresholds, inverse } = config;
   if (inverse) {
@@ -59,9 +61,8 @@ export function runDynamicRating(
 ) {
   const scores: Record<string, number> = {};
   const weightedScores: Record<string, number> = {};
+  const transformedScores: Record<string, number> = {};
   
-  // Calculate derived values if formula exists (Simplified for demo: only supports basic A/B)
-  // In a real app, use a formula parser like 'mathjs'
   const finalValues = { ...values };
 
   Object.keys(model.weights).forEach((paramId) => {
@@ -69,7 +70,7 @@ export function runDynamicRating(
     const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
     
     const score = scoreMetric(val, trans);
-    scores[paramId] = score;
+    transformedScores[paramId] = score;
     weightedScores[paramId] = score * (model.weights[paramId] / 100);
   });
 
@@ -81,9 +82,10 @@ export function runDynamicRating(
   );
 
   return {
-    scores,
+    transformedScores,
     weightedScores,
     finalScore: normalizedScore,
     initialRating: mapping?.rating || "NR",
+    derivedMetrics: {} // Placeholder for future formula expansion
   };
 }

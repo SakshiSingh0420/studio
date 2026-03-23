@@ -1,84 +1,95 @@
+
 "use client"
 
-import { useState, useEffect, use } from "react"
+import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { 
     getCountries, 
     getFactSheet, 
     saveFactSheet, 
     saveRating, 
+    getModels,
+    getScales,
+    getParameters,
     Country 
 } from "@/lib/store"
 import { 
     FactSheetData, 
-    DEFAULT_MODELS, 
-    DEFAULT_SCALES, 
-    runRatingModel, 
-    calculateDerivedMetrics,
+    runDynamicRating,
     RatingModel,
-    RatingScale
+    RatingScale,
+    Parameter
 } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, Save, FileText, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle } from "lucide-react"
+import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2 } from "lucide-react"
 import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
 import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
-
-const DEFAULT_FACT_SHEET: FactSheetData = {
-    gdp: 500000000000,
-    gdpGrowth: 3.5,
-    inflation: 2.1,
-    debt: 200000000000,
-    revenue: 100000000000,
-    interest: 5000000000,
-    fxReserves: 40000000000,
-    imports: 80000000000,
-    exports: 75000000000,
-    externalDebt: 50000000000,
-    debtService: 4000000000,
-    npl: 4.5,
-    car: 12.0,
-    governanceScore: 65,
-    politicalStability: 70,
-    climateRisk: 30,
-    defaultHistory: false
-}
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
     const router = useRouter()
     const { toast } = useToast()
+    
     const [country, setCountry] = useState<Country | null>(null)
-    const [factSheet, setFactSheet] = useState<FactSheetData>(DEFAULT_FACT_SHEET)
-    const [selectedModel, setSelectedModel] = useState<RatingModel>(DEFAULT_MODELS[0])
-    const [selectedScale, setSelectedScale] = useState<RatingScale>(DEFAULT_SCALES[0])
+    const [factSheet, setFactSheet] = useState<FactSheetData>({})
+    const [models, setModels] = useState<RatingModel[]>([])
+    const [scales, setScales] = useState<RatingScale[]>([])
+    const [parameters, setParameters] = useState<Parameter[]>([])
+    
+    const [selectedModel, setSelectedModel] = useState<RatingModel | null>(null)
+    const [selectedScale, setSelectedScale] = useState<RatingScale | null>(null)
+    
     const [calculation, setCalculation] = useState<any>(null)
     const [isGenerating, setIsGenerating] = useState(false)
     const [rationale, setRationale] = useState("")
     const [adjustment, setAdjustment] = useState<number>(0)
     const [step, setStep] = useState<"input" | "calculate" | "review">("input")
+    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
         async function load() {
-            const countries = await getCountries()
-            const found = countries.find(c => c.id === id)
-            if (found) {
-                setCountry(found)
-                const saved = await getFactSheet(found.id)
-                if (saved) setFactSheet(saved)
+            try {
+                const [countriesData, modelsData, scalesData, paramsData] = await Promise.all([
+                    getCountries(),
+                    getModels(),
+                    getScales(),
+                    getParameters()
+                ])
+                
+                const found = countriesData.find(c => c.id === id)
+                if (found) {
+                    setCountry(found)
+                    const saved = await getFactSheet(found.id)
+                    if (saved) setFactSheet(saved)
+                }
+                
+                setModels(modelsData)
+                setScales(scalesData)
+                setParameters(paramsData)
+                
+                if (modelsData.length > 0) setSelectedModel(modelsData[0])
+                if (scalesData.length > 0) setSelectedScale(scalesData[0])
+            } catch (error) {
+                console.error("Initialization error:", error)
+                toast({ title: "Initialization Error", variant: "destructive", description: "Could not load rating parameters." })
+            } finally {
+                setLoading(false)
             }
         }
         load()
     }, [id])
 
     const handleRun = () => {
-        const result = runRatingModel(factSheet, selectedModel, selectedScale)
+        if (!selectedModel || !selectedScale) {
+            toast({ title: "Configuration Error", description: "Please select a model and scale." })
+            return
+        }
+        const result = runDynamicRating(factSheet, selectedModel, selectedScale, parameters)
         setCalculation(result)
         setStep("calculate")
     }
@@ -88,7 +99,6 @@ export default function RatingExecutionPage() {
         setIsGenerating(true)
         try {
             const suggested = await suggestFactSheetData({ countryName: country.name })
-            // suggested comes back with nulls often, merge carefully
             const merged = { ...factSheet }
             Object.keys(suggested).forEach(key => {
                 if ((suggested as any)[key] !== null) {
@@ -105,20 +115,37 @@ export default function RatingExecutionPage() {
     }
 
     const handleGenerateRationale = async () => {
-        if (!calculation || !country) return;
+        if (!calculation || !country || !selectedModel || !selectedScale) return;
         setIsGenerating(true)
         try {
-            const res = await generateRatingRationale({
+            // Mapping for Genkit flow (matching its expected schema)
+            const rationaleInput: any = {
                 country,
                 factSheetData: factSheet,
-                model: selectedModel,
-                ratingScale: selectedScale,
+                model: {
+                    ...selectedModel,
+                    type: 'A', // Defaulting type for compatible rationale prompt
+                    weights: {
+                        economic: selectedModel.weights['economic'] || 20,
+                        fiscal: selectedModel.weights['fiscal'] || 20,
+                        external: selectedModel.weights['external'] || 20,
+                        monetary: selectedModel.weights['monetary'] || 20,
+                        governance: selectedModel.weights['governance'] || 20,
+                        eventRisk: selectedModel.weights['eventRisk'] || 0,
+                    }
+                },
+                ratingScale: {
+                    ...selectedScale,
+                    type: 'standard'
+                },
                 derivedMetrics: calculation.derivedMetrics,
                 transformedScores: calculation.transformedScores,
                 weightedScores: calculation.weightedScores,
                 finalScore: calculation.finalScore,
                 initialRating: calculation.initialRating
-            })
+            }
+            
+            const res = await generateRatingRationale(rationaleInput)
             setRationale(res.rationale)
         } catch (e) {
             toast({ title: "Rationale Error", variant: "destructive", description: "Failed to generate AI rationale." })
@@ -128,7 +155,7 @@ export default function RatingExecutionPage() {
     }
 
     const handleFinalize = async () => {
-        if (!calculation || !country) return;
+        if (!calculation || !country || !selectedModel || !selectedScale) return;
         await saveFactSheet(country.id, factSheet)
         await saveRating({
             countryId: country.id,
@@ -140,7 +167,7 @@ export default function RatingExecutionPage() {
             weightedScores: calculation.weightedScores,
             finalScore: calculation.finalScore,
             initialRating: calculation.initialRating,
-            adjustedRating: adjustment !== 0 ? calculation.initialRating : undefined, // Simplified for demo
+            adjustedRating: calculation.initialRating, // Placeholder for notch logic
             approvalStatus: 'pending',
             reason: rationale
         })
@@ -148,7 +175,8 @@ export default function RatingExecutionPage() {
         router.push('/')
     }
 
-    if (!country) return <div>Loading...</div>
+    if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>
+    if (!country) return <div>Country not found.</div>
 
     return (
         <div className="space-y-8">
@@ -174,42 +202,47 @@ export default function RatingExecutionPage() {
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
                                 <label className="text-xs font-semibold text-muted-foreground uppercase">Analytical Model</label>
-                                <Select onValueChange={(v) => setSelectedModel(DEFAULT_MODELS.find(m => m.id === v)!)} defaultValue={selectedModel.id}>
+                                <Select onValueChange={(v) => setSelectedModel(models.find(m => m.id === v)!)} value={selectedModel?.id}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select Model" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {DEFAULT_MODELS.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                                        {models.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-xs font-semibold text-muted-foreground uppercase">Rating Scale</label>
-                                <Select onValueChange={(v) => setSelectedScale(DEFAULT_SCALES.find(s => s.id === v)!)} defaultValue={selectedScale.id}>
+                                <Select onValueChange={(v) => setSelectedScale(scales.find(s => s.id === v)!)} value={selectedScale?.id}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Select Scale" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {DEFAULT_SCALES.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                        {scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm">Model Weights (%)</CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-2">
-                            {Object.entries(selectedModel.weights).map(([k, v]) => (
-                                <div key={k} className="flex justify-between text-xs">
-                                    <span className="capitalize">{k}</span>
-                                    <span className="font-bold">{v}%</span>
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
+                    {selectedModel && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="text-sm">Model Weights (%)</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-2">
+                                {Object.entries(selectedModel.weights).map(([k, v]) => {
+                                    const p = parameters.find(param => param.id === k)
+                                    return (
+                                        <div key={k} className="flex justify-between text-xs">
+                                            <span className="capitalize">{p?.name || k}</span>
+                                            <span className="font-bold">{v}%</span>
+                                        </div>
+                                    )
+                                })}
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
 
                 <div className="lg:col-span-9">
@@ -226,34 +259,28 @@ export default function RatingExecutionPage() {
                             </CardHeader>
                             <CardContent>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {Object.entries(factSheet).map(([key, value]) => (
-                                        typeof value === 'number' && (
-                                            <div key={key} className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground capitalize">{key.replace(/([A-Z])/g, ' $1')}</label>
-                                                <Input 
-                                                    type="number" 
-                                                    value={value} 
-                                                    onChange={e => setFactSheet({...factSheet, [key]: Number(e.target.value)})} 
-                                                    className="h-9"
-                                                />
-                                            </div>
-                                        )
+                                    {parameters.map((p) => (
+                                        <div key={p.id} className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">{p.name}</label>
+                                            <Input 
+                                                type="number" 
+                                                value={factSheet[p.id] || 0} 
+                                                onChange={e => setFactSheet({...factSheet, [p.id]: Number(e.target.value)})} 
+                                                className="h-9"
+                                            />
+                                        </div>
                                     ))}
-                                    <div className="flex items-center gap-2 pt-6">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={factSheet.defaultHistory} 
-                                            onChange={e => setFactSheet({...factSheet, defaultHistory: e.target.checked})}
-                                            className="w-4 h-4"
-                                        />
-                                        <label className="text-xs font-medium">History of Default</label>
-                                    </div>
+                                    {parameters.length === 0 && (
+                                        <div className="col-span-full py-8 text-center border rounded border-dashed">
+                                            <p className="text-sm text-muted-foreground">No parameters defined in Parameter Master.</p>
+                                        </div>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>
                     )}
 
-                    {step === "calculate" && calculation && (
+                    {step === "calculate" && calculation && selectedModel && (
                         <div className="space-y-6">
                             <Card>
                                 <CardHeader>
@@ -265,33 +292,27 @@ export default function RatingExecutionPage() {
                                         <TableHeader>
                                             <TableRow>
                                                 <TableHead>Pillar</TableHead>
-                                                <TableHead>Raw (Main Metric)</TableHead>
-                                                <TableHead>Derived Result</TableHead>
+                                                <TableHead>Raw Value</TableHead>
                                                 <TableHead>Transform Score (1-5)</TableHead>
                                                 <TableHead>Weight</TableHead>
                                                 <TableHead>Weighted Score</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {[
-                                                { label: 'Economic Growth', key: 'economic', raw: factSheet.gdpGrowth + '%', derived: 'N/A' },
-                                                { label: 'Fiscal Health', key: 'fiscal', raw: '$' + (factSheet.debt / 1e9).toFixed(1) + 'B Debt', derived: (calculation.derivedMetrics.debtToGDP * 100).toFixed(1) + '% Debt/GDP' },
-                                                { label: 'External Stability', key: 'external', raw: '$' + (factSheet.fxReserves / 1e9).toFixed(1) + 'B Reserves', derived: calculation.derivedMetrics.reserveCover.toFixed(2) + 'x Imports' },
-                                                { label: 'Monetary Control', key: 'monetary', raw: factSheet.inflation + '% Inflation', derived: 'N/A' },
-                                                { label: 'Governance Index', key: 'governance', raw: factSheet.governanceScore, derived: 'N/A' },
-                                                { label: 'Event / Default Risk', key: 'eventRisk', raw: factSheet.defaultHistory ? 'Yes' : 'No', derived: 'N/A' },
-                                            ].map((row) => (
-                                                <TableRow key={row.key}>
-                                                    <TableCell className="font-semibold">{row.label}</TableCell>
-                                                    <TableCell>{row.raw}</TableCell>
-                                                    <TableCell>{row.derived}</TableCell>
-                                                    <TableCell className="text-center font-bold">{calculation.transformedScores[row.key]}</TableCell>
-                                                    <TableCell>{(selectedModel.weights as any)[row.key]}%</TableCell>
-                                                    <TableCell className="text-right font-mono bg-muted/20">
-                                                        {calculation.weightedScores[row.key].toFixed(2)}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))}
+                                            {Object.keys(selectedModel.weights).map((pid) => {
+                                                const p = parameters.find(param => param.id === pid)
+                                                return (
+                                                    <TableRow key={pid}>
+                                                        <TableCell className="font-semibold">{p?.name || pid}</TableCell>
+                                                        <TableCell>{factSheet[pid] || 0}</TableCell>
+                                                        <TableCell className="text-center font-bold">{calculation.transformedScores[pid]}</TableCell>
+                                                        <TableCell>{selectedModel.weights[pid]}%</TableCell>
+                                                        <TableCell className="text-right font-mono bg-muted/20">
+                                                            {calculation.weightedScores[pid].toFixed(2)}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                     <div className="mt-6 flex justify-end gap-12 items-center bg-primary p-6 rounded-lg text-primary-foreground shadow-inner">
@@ -331,7 +352,7 @@ export default function RatingExecutionPage() {
                                     </div>
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium">Adjustment Justification</label>
-                                        <textarea className="w-full min-h-[100px] p-3 text-sm rounded-md border bg-background" placeholder="Describe clinical or geopolitical factors for manual adjustment..." />
+                                        <textarea className="w-full min-h-[100px] p-3 text-sm rounded-md border bg-background" placeholder="Describe factors for manual adjustment..." />
                                     </div>
                                 </CardContent>
                             </Card>

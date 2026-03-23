@@ -13,8 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Plus, Trash2, Edit2, Info, Code, Layers, Search, XCircle, Filter } from "lucide-react"
+import { Plus, Trash2, Edit2, Info, Code, Layers, Search, XCircle, Filter, FunctionSquare } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
 
 const CATEGORIES = ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] as const;
 const SOURCES = ["IMF (Auto)", "World Bank (Auto)", "Manual", "Semi-Auto (Editable)", "Computed"] as const;
@@ -94,6 +95,20 @@ export default function ParameterMasterPage() {
     }
   }
 
+  const getTypeBadgeStyles = (type: string) => {
+    return type === 'raw' 
+      ? "bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100" 
+      : "bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100";
+  }
+
+  const getSourceBadgeStyles = (source: string) => {
+    if (source.includes('Auto')) return "bg-green-100 text-green-700 border-green-200 hover:bg-green-100";
+    if (source === 'Manual') return "bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-100";
+    if (source === 'Semi-Auto (Editable)') return "bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-100";
+    if (source === 'Computed') return "bg-indigo-100 text-indigo-700 border-indigo-200 hover:bg-indigo-100";
+    return "";
+  }
+
   // Filtering Logic
   const filteredParams = params.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -113,7 +128,6 @@ export default function ParameterMasterPage() {
   }
 
   const groupedParams = CATEGORIES.reduce((acc, cat) => {
-    // Only show categories if they match the category filter or if filter is "all"
     if (categoryFilter === "all" || categoryFilter === cat) {
       acc[cat] = filteredParams
         .filter(p => p.category === cat)
@@ -220,7 +234,7 @@ export default function ParameterMasterPage() {
             if (categoryParams.length === 0 && activeFilterCount > 0) return null;
 
             return (
-              <AccordionItem key={category} value={category} className="border rounded-lg bg-card px-4 shadow-sm">
+              <AccordionItem key={category} value={category} className="border rounded-lg bg-card px-4 shadow-sm overflow-hidden">
                 <AccordionTrigger className="hover:no-underline py-4">
                   <div className="flex items-center gap-3">
                     <Layers className="w-5 h-5 text-primary opacity-70" />
@@ -231,40 +245,52 @@ export default function ParameterMasterPage() {
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-6">
-                  <Table>
+                  <Table className="financial-table">
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-[30%]">Name & Identifier</TableHead>
+                        <TableHead className="w-[40%]">Pillar & Analytical Identifier</TableHead>
                         <TableHead>Type</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Frequency</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead>Data Source</TableHead>
+                        <TableHead>Cycle</TableHead>
+                        <TableHead className="text-right">Manage</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {categoryParams.length > 0 ? (
                         categoryParams.map(p => (
-                          <TableRow key={p.id}>
+                          <TableRow key={p.id} className="group">
                             <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-semibold text-foreground">{p.name}</span>
-                                <span className="text-[10px] font-mono text-primary flex items-center gap-1">
-                                  <Code className="w-2.5 h-2.5" /> {p.slug}
-                                </span>
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-foreground text-sm">{p.name}</span>
+                                  <Badge variant="outline" className="text-[9px] h-4 px-1.5 font-mono uppercase opacity-50 bg-muted/50 border-none">
+                                    {p.slug}
+                                  </Badge>
+                                </div>
+                                {p.type === 'derived' && p.formula && (
+                                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono bg-muted/40 px-2 py-1 rounded border border-border/20 w-fit">
+                                    <FunctionSquare className="w-2.5 h-2.5 opacity-50" />
+                                    <span>{p.formula}</span>
+                                  </div>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant={p.type === 'derived' ? 'outline' : 'default'} className="capitalize">
-                                  {p.type === 'raw' ? 'Raw Data' : 'Derived'}
+                              <Badge variant="outline" className={cn("capitalize px-2 py-0.5 text-[10px]", getTypeBadgeStyles(p.type))}>
+                                  {p.type === 'raw' ? 'Raw Input' : 'Derived Logic'}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">{p.dataSource}</TableCell>
-                            <TableCell className="text-xs">{p.frequency}</TableCell>
-                            <TableCell className="text-right space-x-1">
+                            <TableCell>
+                              <Badge variant="outline" className={cn("px-2 py-0.5 text-[10px] border-transparent", getSourceBadgeStyles(p.dataSource))}>
+                                {p.dataSource}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-[11px] text-muted-foreground font-medium uppercase">{p.frequency}</TableCell>
+                            <TableCell className="text-right space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setCurrent(p); setIsAdding(true); }}>
                                 <Edit2 className="w-3.5 h-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(p.id)}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => handleDelete(p.id)}>
                                 <Trash2 className="w-3.5 h-3.5" />
                               </Button>
                             </TableCell>
@@ -284,14 +310,6 @@ export default function ParameterMasterPage() {
             );
           })}
         </Accordion>
-        
-        {filteredParams.length === 0 && activeFilterCount > 0 && (
-          <div className="py-20 text-center border-2 border-dashed rounded-lg bg-muted/20">
-            <Search className="w-10 h-10 text-muted-foreground opacity-20 mx-auto mb-4" />
-            <p className="text-muted-foreground font-medium">No parameters match your search criteria.</p>
-            <Button variant="link" onClick={resetFilters} className="mt-2">Clear all filters</Button>
-          </div>
-        )}
       </div>
 
       <Dialog open={isAdding} onOpenChange={setIsAdding}>

@@ -1,72 +1,98 @@
+
 {
   "entities": {
     "Country": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Country",
       "type": "object",
-      "description": "Represents a sovereign country with its key demographic and economic data.",
+      "description": "Represents a sovereign country.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Country entity."
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "region": { "type": "string" },
+        "incomeGroup": { "type": "string" },
+        "currency": { "type": "string" },
+        "population": { "type": "number" },
+        "gdp": { "type": "number" }
+      },
+      "required": ["name", "region"]
+    },
+    "Parameter": {
+      "title": "Parameter",
+      "type": "object",
+      "description": "Definition of a rating factor.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string", "enum": ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] },
+        "type": { "type": "string", "enum": ["raw", "derived"] },
+        "formula": { "type": "string", "description": "Formula for derived parameters (e.g., debt/gdp)" },
+        "dataSource": { "type": "string" },
+        "frequency": { "type": "string", "enum": ["Annual", "Quarterly", "Monthly"] }
+      },
+      "required": ["name", "category", "type"]
+    },
+    "RatingModel": {
+      "title": "Rating Model",
+      "type": "object",
+      "description": "A weighted collection of parameters.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "weights": { 
+          "type": "object",
+          "description": "Map of parameterId to weight percentage"
         },
-        "name": {
-          "type": "string",
-          "description": "Official name of the country."
-        },
-        "region": {
-          "type": "string",
-          "description": "Geographical region the country belongs to (e.g., 'Europe', 'Asia')."
-        },
-        "incomeGroup": {
-          "type": "string",
-          "description": "World Bank income group classification (e.g., 'High income', 'Low income')."
-        },
-        "currency": {
-          "type": "string",
-          "description": "Official currency of the country."
-        },
-        "population": {
-          "type": "number",
-          "description": "Total population of the country."
-        },
-        "gdp": {
-          "type": "number",
-          "description": "Gross Domestic Product of the country (in billions USD)."
+        "transformations": {
+          "type": "object",
+          "description": "Thresholds for scoring parameters 1-5"
         }
       },
-      "required": [
-        "name",
-        "region",
-        "gdp"
-      ]
+      "required": ["name", "weights"]
+    },
+    "RatingScale": {
+      "title": "Rating Scale",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "mapping": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "minScore": { "type": "number" },
+              "maxScore": { "type": "number" },
+              "rating": { "type": "string" }
+            }
+          }
+        }
+      }
     },
     "Rating": {
       "title": "Rating",
       "type": "object",
       "properties": {
         "countryId": { "type": "string" },
+        "modelId": { "type": "string" },
+        "scaleId": { "type": "string" },
         "finalScore": { "type": "number" },
         "initialRating": { "type": "string" },
         "approvalStatus": { "type": "string", "enum": ["pending", "approved", "rejected"] },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isSandbox": { "type": "boolean" }
       }
     }
   },
   "auth": {
-    "providers": [
-      "password",
-      "anonymous"
-    ]
+    "providers": ["password", "anonymous"]
   },
   "firestore": {
-    "/countries/{countryId}": {
-      "schema": { "$ref": "#/entities/Country" },
-      "description": "Sovereign entities list."
-    },
-    "/ratings/{ratingId}": {
-      "schema": { "$ref": "#/entities/Rating" },
-      "description": "Historical rating sessions."
-    }
+    "/countries/{countryId}": { "schema": "Country", "description": "Sovereign list" },
+    "/parameters/{paramId}": { "schema": "Parameter", "description": "Parameter Master" },
+    "/models/{modelId}": { "schema": "RatingModel", "description": "Analytical models" },
+    "/scales/{scaleId}": { "schema": "RatingScale", "description": "Rating scales" },
+    "/ratings/{ratingId}": { "schema": "Rating", "description": "Rating sessions" },
+    "/factSheets/{countryId}": { "schema": "object", "description": "Raw values per country" }
   }
 }

@@ -1,64 +1,16 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * SOVEREIGN CREDIT RATING PLATFORM - SECURITY RULES
-     * 
-     * Simplified rules for prototyping:
-     * - Public Read: Anyone can view countries, ratings, and fact sheets.
-     * - Public Create: Anyone can execute a rating session.
-     * - Admin Writes: Roles/Admin management is restricted.
-     */
-
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
-    }
-
-    // Admin role registry
-    match /roles_admin/{userId} {
-      allow get: if request.auth.uid == userId || isAdmin();
-      allow list: if isAdmin();
-      allow create, update, delete: if false; 
-    }
-
-    // Sovereign country entities
-    match /countries/{countryId} {
-      allow get, list: if true; 
-      allow create, update, delete: if true; // Simplified for rapid prototyping
-    }
-
-    // Rating results (top-level collection used by app)
-    match /ratings/{ratingId} {
-      allow get, list: if true;
-      allow create: if true;
-      allow update, delete: if true;
-    }
-
-    // Fact sheets (top-level collection used by app)
-    match /factSheets/{countryId} {
-      allow get, list: if true;
-      allow write: if true;
-    }
-
-    // Configuration data
-    match /ratingModels/{modelId} {
-      allow get, list: if true;
-      allow write: if isAdmin();
-    }
-
-    match /ratingScales/{scaleId} {
-      allow get, list: if true;
-      allow write: if isAdmin();
-      
-      match /mappingEntries/{mappingEntryId} {
-        allow get, list: if true;
-        allow write: if isAdmin();
-      }
-    }
+    match /countries/{id} { allow read, write: if true; }
+    match /parameters/{id} { allow read, write: if true; }
+    match /models/{id} { allow read, write: if true; }
+    match /scales/{id} { allow read, write: if true; }
+    match /ratings/{id} { allow read, write: if true; }
+    match /factSheets/{id} { allow read, write: if true; }
   }
 }

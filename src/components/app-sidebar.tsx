@@ -1,14 +1,18 @@
+
 "use client"
 
 import {
   BarChart3,
   Globe,
   Home,
-  FileText,
   Settings,
   ShieldCheck,
   History,
   PlusCircle,
+  Database,
+  Layers,
+  Scale,
+  Zap,
 } from "lucide-react"
 import {
   Sidebar,
@@ -26,31 +30,17 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 const items = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: Home,
-  },
-  {
-    title: "Countries",
-    url: "/countries",
-    icon: Globe,
-  },
-  {
-    title: "New Rating",
-    url: "/rate",
-    icon: PlusCircle,
-  },
-  {
-    title: "Rating History",
-    url: "/ratings",
-    icon: History,
-  },
-  {
-    title: "Pending Approvals",
-    url: "/approvals",
-    icon: ShieldCheck,
-  },
+  { title: "Dashboard", url: "/", icon: Home },
+  { title: "Countries", url: "/countries", icon: Globe },
+  { title: "Execute Rating", url: "/rate", icon: PlusCircle },
+  { title: "Rating History", url: "/ratings", icon: History },
+  { title: "Committee Approval", url: "/approvals", icon: ShieldCheck },
+]
+
+const settingsItems = [
+  { title: "Parameter Master", url: "/settings/parameters", icon: Database },
+  { title: "Model Builder", url: "/settings/models", icon: Layers },
+  { title: "Rating Scales", url: "/settings/scales", icon: Scale },
 ]
 
 export function AppSidebar() {
@@ -60,8 +50,8 @@ export function AppSidebar() {
     <Sidebar variant="sidebar" collapsible="icon">
       <SidebarHeader className="border-b px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="bg-primary p-2 rounded-lg">
-            <BarChart3 className="w-5 h-5 text-primary-foreground" />
+          <div className="bg-primary p-2 rounded-lg text-white">
+            <BarChart3 className="w-5 h-5" />
           </div>
           <span className="font-bold text-xl tracking-tight group-data-[collapsible=icon]:hidden">
             SovereignRating
@@ -70,27 +60,39 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="px-4 text-xs font-semibold uppercase text-muted-foreground">
-            Main Menu
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={pathname === item.url} tooltip={item.title}>
-                    <Link href={item.url}>
-                      <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
+          <SidebarGroupLabel>Operations</SidebarGroupLabel>
+          <SidebarMenu>
+            {items.map((item) => (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild isActive={pathname === item.url}>
+                  <Link href={item.url}>
+                    <item.icon className="w-4 h-4" />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Configuration</SidebarGroupLabel>
+          <SidebarMenu>
+            {settingsItems.map((item) => (
+              <SidebarMenuItem key={item.title}>
+                <SidebarMenuButton asChild isActive={pathname === item.url}>
+                  <Link href={item.url}>
+                    <item.icon className="w-4 h-4" />
+                    <span>{item.title}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ))}
+          </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="border-t p-4 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
-        &copy; 2024 SovereignRating Hub
+        Enterprise Platform v2.0
       </SidebarFooter>
     </Sidebar>
   )

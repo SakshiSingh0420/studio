@@ -1,74 +1,46 @@
-import { collection, doc, setDoc, getDoc, getDocs, query, where, addDoc, serverTimestamp, orderBy, updateDoc } from 'firebase/firestore';
+
+import { collection, doc, setDoc, getDoc, getDocs, query, where, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import { FactSheetData } from './rating-engine';
+import { Parameter, RatingModel, RatingScale } from './rating-engine';
 
 const { firestore: db } = initializeFirebase();
 
-export interface Country {
-  id: string;
-  name: string;
-  region: string;
-  incomeGroup: string;
-  currency: string;
-  population: number;
-  gdp: number;
+// GENERIC CRUD
+async function getAll<T>(coll: string): Promise<T[]> {
+  const snap = await getDocs(collection(db, coll));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as T));
 }
 
-export interface Rating {
-  id?: string;
-  countryId: string;
-  modelId: string;
-  scaleId: string;
-  rawData: FactSheetData;
-  derivedMetrics: any;
-  transformedScores: any;
-  weightedScores: any;
-  finalScore: number;
-  initialRating: string;
-  adjustedRating?: string;
-  overrideRating?: string;
-  approvalStatus: 'pending' | 'approved' | 'rejected';
-  reason?: string;
-  createdAt: any;
+async function getOne<T>(coll: string, id: string): Promise<T | null> {
+  const snap = await getDoc(doc(db, coll, id));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as T) : null;
 }
 
-export async function getCountries(): Promise<Country[]> {
-  const snapshot = await getDocs(collection(db, 'countries'));
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Country));
-}
+// PARAMETERS
+export const getParameters = () => getAll<Parameter>('parameters');
+export const saveParameter = (p: Parameter) => setDoc(doc(db, 'parameters', p.id || doc(collection(db, 'parameters')).id), p, { merge: true });
+export const deleteParameter = (id: string) => deleteDoc(doc(db, 'parameters', id));
 
-export async function addCountry(country: Omit<Country, 'id'>) {
-  const docRef = await addDoc(collection(db, 'countries'), country);
-  return { id: docRef.id, ...country };
-}
+// MODELS
+export const getModels = () => getAll<RatingModel>('models');
+export const saveModel = (m: RatingModel) => setDoc(doc(db, 'models', m.id || doc(collection(db, 'models')).id), m, { merge: true });
 
-export async function getFactSheet(countryId: string): Promise<FactSheetData | null> {
-  const docRef = doc(db, 'factSheets', countryId);
-  const snap = await getDoc(docRef);
-  return snap.exists() ? snap.data() as FactSheetData : null;
-}
+// SCALES
+export const getScales = () => getAll<RatingScale>('scales');
+export const saveScale = (s: RatingScale) => setDoc(doc(db, 'scales', s.id || doc(collection(db, 'scales')).id), s, { merge: true });
 
-export async function saveFactSheet(countryId: string, data: FactSheetData) {
-  await setDoc(doc(db, 'factSheets', countryId), data);
-}
+// COUNTRIES
+export interface Country { id: string; name: string; region: string; incomeGroup: string; currency: string; population: number; gdp: number; }
+export const getCountries = () => getAll<Country>('countries');
+export const addCountry = (c: any) => addDoc(collection(db, 'countries'), c);
 
-export async function saveRating(rating: Omit<Rating, 'id' | 'createdAt'>) {
-  const ratingData = { ...rating, createdAt: serverTimestamp() };
-  const docRef = await addDoc(collection(db, 'ratings'), ratingData);
-  return { id: docRef.id, ...ratingData };
-}
-
-export async function getRatingHistory(countryId: string): Promise<Rating[]> {
+// RATINGS
+export const saveRating = (r: any) => addDoc(collection(db, 'ratings'), { ...r, createdAt: serverTimestamp() });
+export const getRatingHistory = (countryId: string) => {
   const q = query(collection(db, 'ratings'), where('countryId', '==', countryId), orderBy('createdAt', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Rating));
-}
+  return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
+};
 
-export async function updateRatingStatus(ratingId: string, status: string, overrideRating?: string, reason?: string) {
-    const docRef = doc(db, 'ratings', ratingId);
-    await updateDoc(docRef, { 
-      approvalStatus: status, 
-      overrideRating: overrideRating || null, 
-      reason: reason || null 
-    });
-}
+// FACT SHEETS
+export const getFactSheet = (id: string) => getDoc(doc(db, 'factSheets', id)).then(s => s.exists() ? s.data() : null);
+export const saveFactSheet = (id: string, data: any) => setDoc(doc(db, 'factSheets', id), data, { merge: true });

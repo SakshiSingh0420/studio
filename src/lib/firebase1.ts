@@ -1,14 +1,3 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-
-const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "sovereignrating-hub",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "XXXX",
-  appId: "XXXX"
-};
-
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
+// This file has been deprecated in favor of the centralized initialization in src/firebase/index.ts
+// Please import firestore or auth from '@/firebase' instead.
+export {};

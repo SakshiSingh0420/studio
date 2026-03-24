@@ -39,13 +39,13 @@ const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
         "gdp_growth": 6.8,
         "inflation": 5.1,
         "fx_reserves": 640000000000,
-        "debt": 2771000000000, // Roughly 81.5% of GDP
+        "government_debt": 2771000000000,
         "governance_score": 0.65,
         "political_stability": 0.55,
-        "interest": 22000000000,
+        "interest_payments": 22000000000,
         "imports": 740000000000,
         "exports": 680000000000,
-        "revenue": 590000000000,
+        "government_revenue": 590000000000,
         "external_debt": 620000000000,
         "debt_service": 45000000000
     },
@@ -54,30 +54,15 @@ const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
         "gdp_growth": 2.5,
         "inflation": 3.1,
         "fx_reserves": 240000000000,
-        "debt": 33000000000000,
+        "government_debt": 33000000000000,
         "governance_score": 0.88,
         "political_stability": 0.75,
-        "interest": 680000000000,
+        "interest_payments": 680000000000,
         "imports": 3600000000000,
         "exports": 2900000000000,
-        "revenue": 5000000000000,
+        "government_revenue": 5000000000000,
         "external_debt": 25000000000000,
         "debt_service": 900000000000
-    },
-    "Brazil": {
-        "gdp": 2000000000000,
-        "gdp_growth": 3.0,
-        "inflation": 4.2,
-        "fx_reserves": 350000000000,
-        "debt": 1480000000000,
-        "governance_score": 0.52,
-        "political_stability": 0.45,
-        "interest": 98000000000,
-        "imports": 260000000000,
-        "exports": 310000000000,
-        "revenue": 330000000000,
-        "external_debt": 680000000000,
-        "debt_service": 80000000000
     }
 }
 
@@ -155,7 +140,7 @@ export default function RatingExecutionPage() {
         load()
     }, [id])
 
-    // Live calculation of derived ratios for UI feedback during data entry
+    // Live calculation for UI feedback
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         const context: Record<string, number> = {}; 
@@ -170,13 +155,12 @@ export default function RatingExecutionPage() {
         const derived = parameters.filter(p => p.type === 'derived');
         
         derived.forEach(p => {
-            // Hardcoded failsafe for demo
             if (p.slug === 'debt_to_gdp') {
-                const d = context['debt'] || 0;
+                const d = context['government_debt'] || context['debt'] || 0;
                 const g = context['gdp'] || 1;
                 results[p.id] = (d / g) * 100;
             } else if (p.slug === 'reserve_cover') {
-                const r = context['fx_reserves'] || 0;
+                const r = context['fx_reserves'] || context['reserves'] || 0;
                 const i = context['imports'] || 12;
                 results[p.id] = r / (i / 12);
             } else if (p.formula) {
@@ -202,7 +186,7 @@ export default function RatingExecutionPage() {
         setFactSheet(prev => {
             const next = { ...prev };
             parameters.forEach(p => {
-                if (p.type === 'raw' && p.dataSource.includes('Auto')) {
+                if (p.type === 'raw') {
                     const val = mockData[p.slug]
                     if (val !== undefined) {
                         next[p.id] = val
@@ -253,29 +237,6 @@ export default function RatingExecutionPage() {
             toast({ title: "AI Synthesis Complete", description: "Updated fact sheet with market-derived suggestions." })
         } catch (e) {
             toast({ title: "AI Error", variant: "destructive", description: "Failed to synthesize analytical data." })
-        } finally {
-            setIsGenerating(false)
-        }
-    }
-
-    const handleGenerateRationale = async () => {
-        if (!calculation || !country || !selectedModel || !selectedScale) return;
-        setIsGenerating(true)
-        try {
-            const res = await generateRatingRationale({
-                country,
-                factSheetData: factSheet,
-                model: selectedModel as any,
-                ratingScale: selectedScale as any,
-                derivedMetrics: calculation.derivedMetrics,
-                transformedScores: calculation.transformedScores,
-                weightedScores: calculation.weightedScores,
-                finalScore: calculation.finalScore,
-                initialRating: calculation.initialRating
-            })
-            setRationale(res.rationale)
-        } catch (e) {
-            toast({ title: "Analytical Narrative Generation Error", variant: "destructive", description: "Failed to generate a rating narrative." })
         } finally {
             setIsGenerating(false)
         }
@@ -432,17 +393,6 @@ export default function RatingExecutionPage() {
                                 </div>
                             </CardContent>
                         </Card>
-                    )}
-
-                    {step === "review" && calculation && (
-                        <div className="grid gap-6 md:grid-cols-2">
-                            <Card className="border-t-4 border-t-primary">
-                                <CardHeader><CardTitle>AI Analytical Narrative</CardTitle></CardHeader>
-                                <CardContent className="min-h-[300px]">
-                                    {isGenerating ? <div className="flex flex-col items-center justify-center h-full"><Loader2 className="animate-spin" /></div> : rationale ? <p className="text-sm whitespace-pre-wrap">{rationale}</p> : <Button onClick={handleGenerateRationale}>Generate Rating Rationale</Button>}
-                                </CardContent>
-                            </Card>
-                        </div>
                     )}
                 </div>
             </div>

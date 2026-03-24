@@ -104,7 +104,7 @@ export function runDynamicRating(
   
   const context: Record<string, number> = {};
   
-  // Stage 1: Map all raw inputs to context by SLUG for consistency
+  // Stage 1: Map all raw inputs to context by SLUG
   parameters.forEach(p => {
     if (p.type === 'raw') {
       const val = valuesById[p.id] ?? valuesById[p.slug] ?? 0;
@@ -113,42 +113,56 @@ export function runDynamicRating(
     }
   });
 
-  // Stage 2: Hardcoded Failsafe Calculations (Prioritize these over formula engine for critical demo metrics)
-  const calculateHardcoded = (slug: string, logic: () => number) => {
-    const p = parameters.find(param => param.slug === slug);
+  // Helper to find parameter by multiple possible slug variations
+  const findParamBySlugs = (slugs: string[]) => {
+    return parameters.find(p => slugs.includes(p.slug));
+  };
+
+  // Stage 2: Hardcoded Logic for Critical Demo Metrics
+  const calculateHardcoded = (targetSlug: string, sourceSlugs: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
+    const p = findParamBySlugs([targetSlug]);
     if (p && p.type === 'derived') {
-      const result = logic();
-      context[slug] = result;
+      // Build local context for the logic based on source slug variations
+      const localCtx: Record<string, number> = {};
+      Object.entries(sourceSlugs).forEach(([key, variations]) => {
+        let foundVal = 0;
+        for (const v of variations) {
+          if (context[v] !== undefined) {
+            foundVal = context[v];
+            break;
+          }
+        }
+        localCtx[key] = foundVal;
+      });
+
+      const result = logic(localCtx);
+      context[p.slug] = result;
       derivedMetrics[p.id] = result;
       actualValuesUsed[p.id] = result;
     }
   };
 
   // Debt to GDP: (Debt / GDP) * 100
-  calculateHardcoded('debt_to_gdp', () => {
-    const debt = context['debt'] || 0;
-    const gdp = context['gdp'] || 1; // Avoid div by zero
-    return (debt / gdp) * 100;
-  });
+  calculateHardcoded('debt_to_gdp', 
+    { debt: ['debt', 'government_debt', 'total_debt'], gdp: ['gdp'] }, 
+    (c) => (c.debt / (c.gdp || 1)) * 100
+  );
 
   // Reserve Cover: FX Reserves / Imports (Months)
-  calculateHardcoded('reserve_cover', () => {
-    const reserves = context['fx_reserves'] || 0;
-    const imports = context['imports'] || 12;
-    return (reserves / (imports / 12));
-  });
+  calculateHardcoded('reserve_cover', 
+    { res: ['fx_reserves', 'reserves'], imp: ['imports'] }, 
+    (c) => c.res / ((c.imp || 12) / 12)
+  );
 
   // Interest to Revenue: (Interest / Revenue) * 100
-  calculateHardcoded('interest_to_revenue', () => {
-    const interest = context['interest'] || 0;
-    const revenue = context['revenue'] || 1;
-    return (interest / revenue) * 100;
-  });
+  calculateHardcoded('interest_to_revenue', 
+    { int: ['interest', 'interest_payments'], rev: ['revenue', 'government_revenue'] }, 
+    (c) => (c.int / (c.rev || 1)) * 100
+  );
 
   // Stage 3: Formula Engine (Secondary Pass for remaining derived parameters)
   const derivedParams = parameters.filter(p => p.type === 'derived' && p.formula);
   derivedParams.forEach(p => {
-    // Only calculate if not already handled by hardcoded logic or if value is still 0
     if (!actualValuesUsed[p.id]) {
       const computedValue = evaluateFormula(p.formula!, context);
       derivedMetrics[p.id] = computedValue;
@@ -176,6 +190,8 @@ export function runDynamicRating(
   const mapping = scale.mapping.find(
     (m) => normalizedScore >= m.minScore && normalizedScore <= m.maxScore
   );
+
+  console.log('Calculation Debug:', { context, actualValuesUsed, finalScore: normalizedScore });
 
   return {
     transformedScores,

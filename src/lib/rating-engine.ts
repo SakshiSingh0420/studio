@@ -40,19 +40,20 @@ export type RatingScale = {
 export type FactSheetData = Record<string, any>;
 
 /**
- * Evaluates a formula using parameter slugs as variables.
+ * Evaluates a formula using parameter slugs or normalized names as variables.
  */
-export function evaluateFormula(formula: string, valuesBySlug: Record<string, number>): number {
+export function evaluateFormula(formula: string, context: Record<string, number>): number {
   try {
     if (!formula) return 0;
 
     let expression = formula.toLowerCase();
-    // Sort slugs by length descending to prevent partial matches
-    const sortedSlugs = Object.keys(valuesBySlug).sort((a, b) => b.length - a.length);
+    // Sort keys by length descending to prevent partial matches (e.g., 'gdp' before 'gdp_growth')
+    const sortedKeys = Object.keys(context).sort((a, b) => b.length - a.length);
     
-    for (const slug of sortedSlugs) {
-      const val = valuesBySlug[slug] ?? 0;
-      const regex = new RegExp(`\\b${slug.toLowerCase()}\\b`, 'g');
+    for (const key of sortedKeys) {
+      const val = context[key] ?? 0;
+      // Replace all occurrences of the key (as a whole word)
+      const regex = new RegExp(`\\b${key}\\b`, 'g');
       expression = expression.replace(regex, val.toString());
     }
 
@@ -98,36 +99,52 @@ export function runDynamicRating(
   scale: RatingScale,
   parameters: Parameter[]
 ) {
+  console.log("--- START RATING EXECUTION ---");
+  console.log("Inputs Received:", valuesById);
+
   const weightedScores: Record<string, number> = {};
   const transformedScores: Record<string, number> = {};
   const derivedMetrics: Record<string, number> = {};
   const actualValuesUsed: Record<string, number> = {};
   
-  // 1. Build context using SLUGS for formula execution
+  // 1. Build context using Multi-Layer Mapping (ID, Slug, Name)
   const context: Record<string, number> = {};
   parameters.forEach(p => {
     const val = valuesById[p.id] ?? 0;
-    const slugSource = p.slug || p.id || "";
-    const normalizedSlug = slugSource.toLowerCase().replace(/-/g, '_');
-    if (normalizedSlug) {
-      context[normalizedSlug] = val;
+    
+    // Key 1: Parameter ID (normalized)
+    context[p.id.toLowerCase().replace(/-/g, '_')] = val;
+    
+    // Key 2: Parameter Slug (normalized)
+    if (p.slug) {
+        context[p.slug.toLowerCase().replace(/-/g, '_')] = val;
     }
+    
+    // Key 3: Parameter Name (normalized to slug format)
+    if (p.name) {
+        context[p.name.toLowerCase().replace(/[\s-]/g, '_')] = val;
+    }
+
     actualValuesUsed[p.id] = val;
   });
 
-  // 2. Run Failsafe Hardcoded Calculation Layer
-  const runHardcoded = (targetSlugs: string[], sourceSlugs: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
+  console.log("Analytical Context Built:", context);
+
+  // 2. Run Failsafe Hardcoded Calculation Layer (Prioritized for Demo)
+  const runHardcoded = (targetKeys: string[], sourceKeys: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
     const p = parameters.find(param => {
-        const s = param.slug || param.id || "";
-        return targetSlugs.includes(s.toLowerCase().replace(/-/g, '_'));
+        const slug = (param.slug || "").toLowerCase().replace(/-/g, '_');
+        const name = (param.name || "").toLowerCase().replace(/[\s-]/g, '_');
+        const id = (param.id || "").toLowerCase().replace(/-/g, '_');
+        return targetKeys.includes(slug) || targetKeys.includes(name) || targetKeys.includes(id);
     });
     
     if (p) {
       const localCtx: Record<string, number> = {};
-      Object.entries(sourceSlugs).forEach(([key, variations]) => {
+      Object.entries(sourceKeys).forEach(([key, variations]) => {
         let foundVal = 0;
         for (const v of variations) {
-          const normV = v.toLowerCase().replace(/-/g, '_');
+          const normV = v.toLowerCase().replace(/[\s-]/g, '_');
           if (context[normV] !== undefined) {
             foundVal = context[normV];
             break;
@@ -137,22 +154,31 @@ export function runDynamicRating(
       });
 
       const result = logic(localCtx);
+      console.log(`Hardcoded Calc for ${p.name}:`, result, "using inputs:", localCtx);
+      
       const slugKey = (p.slug || p.id || "").toLowerCase().replace(/-/g, '_');
       if (slugKey) context[slugKey] = result;
+      
       actualValuesUsed[p.id] = result;
       derivedMetrics[p.id] = result;
     }
   };
 
-  // Debt to GDP
+  // Debt to GDP (Supports variants like 'Debt', 'Govt Debt', etc.)
   runHardcoded(['debt_to_gdp', 'debt_to_gdp_ratio', 'debt_gdp'], 
-    { debt: ['government_debt', 'debt', 'total_debt'], gdp: ['gdp', 'nominal_gdp'] }, 
+    { 
+        debt: ['government_debt', 'debt', 'total_debt', 'total_government_debt'], 
+        gdp: ['gdp', 'nominal_gdp', 'gross_domestic_product'] 
+    }, 
     (c) => (c.debt / (c.gdp || 1)) * 100
   );
 
   // Reserve Cover
-  runHardcoded(['reserve_cover', 'fx_reserve_months'], 
-    { res: ['fx_reserves', 'reserves'], imp: ['imports'] }, 
+  runHardcoded(['reserve_cover', 'fx_reserve_months', 'reserves_to_imports'], 
+    { 
+        res: ['fx_reserves', 'reserves', 'foreign_exchange_reserves'], 
+        imp: ['imports', 'total_imports'] 
+    }, 
     (c) => c.res / ((c.imp || 12) / 12)
   );
 
@@ -166,6 +192,8 @@ export function runDynamicRating(
       derivedMetrics[p.id] = result;
     }
   });
+
+  console.log("Final Values Used for Scoring:", actualValuesUsed);
 
   // 4. Scoring and Weighting
   Object.keys(model.weights).forEach((paramId) => {
@@ -186,6 +214,8 @@ export function runDynamicRating(
   const mapping = scale.mapping.find(
     (m) => normalizedScore >= m.minScore && normalizedScore <= m.maxScore
   );
+
+  console.log("--- END RATING EXECUTION ---");
 
   return {
     transformedScores,

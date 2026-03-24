@@ -89,26 +89,34 @@ export default function RatingExecutionPage() {
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         const context: Record<string, number> = {}; 
+        
+        // 1. Populate raw inputs into context
         parameters.forEach(p => {
             if (p.type === 'raw') {
                 const rawVal = factSheet[p.id];
-                // Safety check for p.slug to avoid toLowerCase() error
-                const slugSource = p.slug || p.id || "";
-                const normalizedSlug = slugSource.toLowerCase().replace(/-/g, '_');
-                if (normalizedSlug) {
-                    context[normalizedSlug] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-                }
+                const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+                
+                // Use normalized slugs and names for calculation keys
+                const slugKey = (p.slug || "").toLowerCase().replace(/-/g, '_');
+                const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+                const idKey = (p.id || "").toLowerCase().replace(/-/g, '_');
+
+                if (slugKey) context[slugKey] = val;
+                if (nameKey) context[nameKey] = val;
+                context[idKey] = val;
             }
         });
         
+        // 2. Compute derived metrics for display
         const results: Record<string, number> = {};
         parameters.filter(p => p.type === 'derived').forEach(p => {
-            const slugSource = p.slug || p.id || "";
-            const normalizedTarget = slugSource.toLowerCase().replace(/-/g, '_');
+            const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
+            const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             
-            if (normalizedTarget === 'debt_to_gdp') {
-                const debt = context['government_debt'] || context['debt'] || context['total_debt'] || 0;
-                const gdp = context['gdp'] || 1;
+            // Failsafe for common derived metrics
+            if (slug === 'debt_to_gdp' || name === 'debt_to_gdp') {
+                const debt = context['government_debt'] || context['debt'] || context['total_government_debt'] || 0;
+                const gdp = context['gdp'] || context['nominal_gdp'] || context['gross_domestic_product'] || 1;
                 results[p.id] = (debt / gdp) * 100;
             } else if (p.formula) {
                 results[p.id] = evaluateFormula(p.formula, context);
@@ -121,11 +129,16 @@ export default function RatingExecutionPage() {
     const handleRun = () => {
         if (!selectedModel || !selectedScale || !parameters.length) return
         
+        console.log("Harvesting inputs for Rating Run...");
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
-            numericInputs[p.id] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+            // Capture exact entered value or skip
+            const value = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+            numericInputs[p.id] = value;
         });
+
+        console.log("Captured Fact Sheet Inputs:", numericInputs);
 
         // Trigger dynamic rating calculation
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 

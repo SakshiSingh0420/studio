@@ -40,27 +40,30 @@ export type FactSheetData = Record<string, any>;
 /**
  * Evaluates a formula using parameter slugs as variables.
  */
-function evaluateFormula(formula: string, valuesBySlug: Record<string, number>): number {
+export function evaluateFormula(formula: string, valuesBySlug: Record<string, number>): number {
   try {
+    if (!formula) return 0;
+
     // 1. Replace parameter slugs with their values
-    // Sort by length descending to prevent partial replacements
+    // Sort by length descending to prevent partial replacements (e.g., 'gdp_growth' before 'gdp')
     const sortedSlugs = Object.keys(valuesBySlug).sort((a, b) => b.length - a.length);
     let expression = formula;
     
     for (const slug of sortedSlugs) {
       const val = valuesBySlug[slug] ?? 0;
-      // Match slug as a whole word
+      // Match slug as a whole word to avoid replacing parts of other slugs
       const regex = new RegExp(`\\b${slug}\\b`, 'g');
       expression = expression.replace(regex, val.toString());
     }
 
-    // 2. Basic sanitation
+    // 2. Basic sanitation - only allow numbers, operators, and parentheses
     if (/[^-+*/().\d\s]/.test(expression)) {
       console.warn("Formula contains invalid characters after slug replacement:", expression);
       return 0;
     }
 
     // 3. Evaluate result
+    // eslint-disable-next-line no-new-func
     const result = new Function(`return ${expression}`)();
     
     if (!isFinite(result)) return 0;
@@ -109,7 +112,8 @@ export function runDynamicRating(
   // 1. Calculate derived parameters using slugs
   const derivedParams = parameters.filter(p => p.type === 'derived' && p.formula);
   
-  // Single pass derivation
+  // Chained derivation: allow derived parameters to depend on others
+  // We sort by dependencies or just run a single pass if dependencies are simple
   derivedParams.forEach(p => {
     const computedValue = evaluateFormula(p.formula!, valuesBySlug);
     derivedMetrics[p.id] = computedValue;

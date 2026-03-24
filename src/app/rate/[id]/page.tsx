@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { 
     getCountries, 
@@ -17,7 +17,8 @@ import {
     runDynamicRating,
     RatingModel,
     RatingScale,
-    Parameter
+    Parameter,
+    evaluateFormula
 } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -153,6 +154,36 @@ export default function RatingExecutionPage() {
         }
         load()
     }, [id])
+
+    // Live Calculation of Derived Parameters
+    const liveDerivedMetrics = useMemo(() => {
+        if (!parameters.length) return {};
+        
+        const valuesBySlug: Record<string, number> = {};
+        parameters.forEach(p => {
+            if (p.type === 'raw') {
+                valuesBySlug[p.slug] = factSheet[p.id] || 0;
+            }
+        });
+
+        const results: Record<string, number> = {};
+        const derived = parameters.filter(p => p.type === 'derived' && p.formula);
+        
+        derived.forEach(p => {
+            const val = evaluateFormula(p.formula!, valuesBySlug);
+            results[p.id] = val;
+            valuesBySlug[p.slug] = val; // Allow chaining
+        });
+        
+        return results;
+    }, [factSheet, parameters]);
+
+    // Debug logging for computed values
+    useEffect(() => {
+        if (Object.keys(liveDerivedMetrics).length > 0) {
+            console.log("Live Computed Metrics:", liveDerivedMetrics);
+        }
+    }, [liveDerivedMetrics]);
 
     const handleAutoFill = async () => {
         if (!country || !parameters.length) return
@@ -430,15 +461,21 @@ export default function RatingExecutionPage() {
                                             <Info className="w-4 h-4 text-muted-foreground opacity-70" />
                                         </h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {derivedParameters.map(p => (
-                                                <div key={p.id} className="p-4 bg-muted/10 rounded-lg border border-border/40 flex justify-between items-center group hover:bg-muted/30 transition-colors">
-                                                    <div className="min-w-0">
-                                                        <p className="text-xs font-bold truncate">{p.name}</p>
-                                                        <p className="text-[10px] text-muted-foreground font-mono mt-1 bg-background inline-block px-1.5 py-0.5 rounded truncate max-w-full">{p.formula}</p>
+                                            {derivedParameters.map(p => {
+                                                const val = liveDerivedMetrics[p.id] ?? 0;
+                                                return (
+                                                    <div key={p.id} className="p-4 bg-muted/10 rounded-lg border border-border/40 flex justify-between items-center group hover:bg-muted/30 transition-colors">
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-xs font-bold truncate">{p.name}</p>
+                                                            <p className="text-[10px] text-muted-foreground font-mono mt-1 bg-background inline-block px-1.5 py-0.5 rounded truncate max-w-[150px]">{p.formula}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-sm font-black text-primary font-mono">{val.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                            <Badge variant="outline" className="text-[8px] uppercase font-mono border-none bg-muted/50 h-4">Derived</Badge>
+                                                        </div>
                                                     </div>
-                                                    <Badge variant="outline" className="text-[9px] uppercase font-mono border-none bg-muted/50">Derived</Badge>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}

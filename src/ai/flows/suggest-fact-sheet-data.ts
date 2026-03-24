@@ -16,21 +16,21 @@ const SuggestFactSheetDataInputSchema = z.object({
 export type SuggestFactSheetDataInput = z.infer<typeof SuggestFactSheetDataInputSchema>;
 
 const FactSheetDataOutputSchema = z.object({
-  gdp: z.number().nullable().describe('Gross Domestic Product in current US dollars (e.g., 2,700,000,000,000 for 2.7 trillion).'),
-  gdpGrowth: z.number().nullable().describe('Annual GDP growth rate as a percentage (e.g., 3.5 for 3.5%).'),
-  inflation: z.number().nullable().describe('Annual inflation rate as a percentage (e.g., 2.1 for 2.1%).'),
+  gdp: z.number().nullable().describe('Gross Domestic Product in current US dollars.'),
+  gdp_growth: z.number().nullable().describe('Annual GDP growth rate as a percentage (e.g., 3.5 for 3.5%).'),
+  inflation: z.number().nullable().describe('Annual inflation rate as a percentage.'),
   debt: z.number().nullable().describe('Government debt in current US dollars.'),
   revenue: z.number().nullable().describe('Government revenue in current US dollars.'),
   interest: z.number().nullable().describe('Government interest payments on debt in current US dollars.'),
-  fxReserves: z.number().nullable().describe('Foreign exchange reserves in current US dollars.'),
+  fx_reserves: z.number().nullable().describe('Foreign exchange reserves in current US dollars.'),
   imports: z.number().nullable().describe('Total imports of goods and services in current US dollars.'),
   exports: z.number().nullable().describe('Total exports of goods and services in current US dollars.'),
-  externalDebt: z.number().nullable().describe('Total external debt in current US dollars.'),
-  debtService: z.number().nullable().describe('External debt service in current US dollars.'),
-  governanceScore: z.number().nullable().describe('A composite governance score or index, typically a numerical value.'),
-  politicalStability: z.number().nullable().describe('A political stability indicator or score, typically a numerical value.'),
-  climateRisk: z.number().nullable().describe('A climate risk score or index, typically a numerical value.'),
-}).describe('Suggested economic, fiscal, and external data points for the fact sheet. Values should be numerical. If a value is unavailable, use null.');
+  external_debt: z.number().nullable().describe('Total external debt in current US dollars.'),
+  debt_service: z.number().nullable().describe('External debt service in current US dollars.'),
+  governance_score: z.number().nullable().describe('A composite governance score or index.'),
+  political_stability: z.number().nullable().describe('A political stability indicator or score.'),
+  climate_risk: z.number().nullable().describe('A climate risk score or index.'),
+}).describe('Suggested data points. Keys MUST be snake_case to match internal parameter slugs.');
 export type SuggestFactSheetDataOutput = z.infer<typeof FactSheetDataOutputSchema>;
 
 export async function suggestFactSheetData(input: SuggestFactSheetDataInput): Promise<SuggestFactSheetDataOutput> {
@@ -46,26 +46,25 @@ Your task is to find and provide current (most recent available year) economic, 
 
 Retrieve the following specific data points:
 - Gross Domestic Product (GDP)
-- Annual GDP growth rate
-- Annual inflation rate
-- Government debt
-- Government revenue
-- Government interest payments on debt
-- Foreign exchange reserves
-- Total imports of goods and services
-- Total exports of goods and services
-- Total external debt
-- External debt service
-- A composite governance score or index
-- A political stability indicator or score
-- A climate risk score or index
+- Annual GDP growth rate (gdp_growth)
+- Annual inflation rate (inflation)
+- Government debt (debt)
+- Government revenue (revenue)
+- Government interest payments on debt (interest)
+- Foreign exchange reserves (fx_reserves)
+- Total imports of goods and services (imports)
+- Total exports of goods and services (exports)
+- Total external debt (external_debt)
+- External debt service (debt_service)
+- A composite governance score or index (governance_score)
+- A political stability indicator or score (political_stability)
+- A climate risk score or index (climate_risk)
 
-For all monetary values (GDP, debt, revenue, interest, fxReserves, imports, exports, externalDebt, debtService), provide them in current US dollars, converted to a plain number representing the full value (e.g., 2,700,000,000,000 for 2.7 trillion). For GDP, use the most standard and recent reported value.
-For rates (gdpGrowth, inflation), provide them as a percentage number (e.g., 3.5 for 3.5%).
-For scores (governanceScore, politicalStability, climateRisk), provide them as numerical values.
+For all monetary values, provide them in current US dollars as plain numbers. 
+For rates, provide them as a percentage number (e.g., 3.5 for 3.5%).
+For scores, provide them as numerical values.
 
-If a specific data point is not readily available or cannot be found, output 'null' for that field.
-Ensure the output strictly adheres to the JSON schema provided.`,
+Ensure the output keys strictly follow the snake_case naming provided in parentheses.`,
 });
 
 const suggestFactSheetDataFlow = ai.defineFlow(

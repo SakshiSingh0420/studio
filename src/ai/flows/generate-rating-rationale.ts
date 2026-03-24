@@ -12,22 +12,19 @@ import {z} from 'genkit';
 
 const FactSheetDataSchema = z.object({
   gdp: z.number().optional(),
-  gdpGrowth: z.number().optional(),
+  gdp_growth: z.number().optional(),
   inflation: z.number().optional(),
   debt: z.number().optional(),
   revenue: z.number().optional(),
   interest: z.number().optional(),
-  fxReserves: z.number().optional(),
+  fx_reserves: z.number().optional(),
   imports: z.number().optional(),
   exports: z.number().optional(),
-  externalDebt: z.number().optional(),
-  debtService: z.number().optional(),
-  npl: z.number().optional(),
-  car: z.number().optional(),
-  governanceScore: z.number().optional(),
-  politicalStability: z.number().optional(),
-  climateRisk: z.number().optional(),
-  defaultHistory: z.boolean().optional(),
+  external_debt: z.number().optional(),
+  debt_service: z.number().optional(),
+  governance_score: z.number().optional(),
+  political_stability: z.number().optional(),
+  climate_risk: z.number().optional(),
 });
 
 const CountryDataSchema = z.object({
@@ -43,16 +40,7 @@ const CountryDataSchema = z.object({
 const ModelSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(['A', 'B', 'C', 'D']),
-  weights: z.object({
-    economic: z.number(),
-    fiscal: z.number(),
-    external: z.number(),
-    monetary: z.number(),
-    governance: z.number(),
-    eventRisk: z.number(),
-  }),
-  useFlag: z.boolean(),
+  weights: z.record(z.number()),
 });
 
 const RatingScaleMappingSchema = z.object({
@@ -64,7 +52,6 @@ const RatingScaleMappingSchema = z.object({
 const RatingScaleSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(['standard', 'numeric', 'moodys']),
   mapping: z.array(RatingScaleMappingSchema),
 });
 
@@ -78,9 +65,6 @@ const GenerateRatingRationaleInputSchema = z.object({
   weightedScores: z.record(z.number().nullable()),
   finalScore: z.number(),
   initialRating: z.string(),
-  adjustedRating: z.string().optional(),
-  overrideRating: z.string().optional(),
-  approvalStatus: z.string().optional(),
 });
 export type GenerateRatingRationaleInput = z.infer<typeof GenerateRatingRationaleInputSchema>;
 
@@ -99,57 +83,23 @@ const prompt = ai.definePrompt({
   output: {schema: GenerateRatingRationaleOutputSchema},
   prompt: `You are an expert credit rating analyst. Your task is to generate a clear, concise narrative explanation and justification for a country's assigned sovereign credit rating.
 
-Use the following data to construct your rationale:
-
 Country: {{{country.name}}}
 
-Fact Sheet Data:
+Analytical Breakdown:
+- Final Assigned Rating: {{{initialRating}}}
+- Quantitative Aggregate Score: {{{finalScore}}}%
+
+Detailed Fact Sheet:
 {{#each factSheetData}}
   - {{ @key }}: {{ this }}
 {{/each}}
 
-Rating Model Used: {{{model.name}}} (Type: {{{model.type}}})
-Model Weights:
-{{#each model.weights}}
-  - {{ @key }}: {{ this }}%
-{{/each}}
-
-Derived Metrics:
-{{#each derivedMetrics}}
-  - {{ @key }}: {{ this }}
-{{/each}}
-
-Transformed Scores (1-5, 5 being best):
-{{#each transformedScores}}
-  - {{ @key }}: {{ this }}
-{{/each}}
-
-Weighted Scores:
+Model Impact Factors:
 {{#each weightedScores}}
-  - {{ @key }}: {{ this }}
+  - Parameter Impact: {{ @key }} contributing {{ this }} to the final score.
 {{/each}}
 
-Final Aggregated Score: {{{finalScore}}}
-Initial Rating: {{{initialRating}}}
-
-{{#if adjustedRating}}
-Adjustment: The initial rating was adjusted to {{{adjustedRating}}}.
-{{/if}}
-
-{{#if overrideRating}}
-Override: The rating was overridden to {{{overrideRating}}}.
-{{/if}}
-
-Rating Scale Used: {{{ratingScale.name}}}
-
-Based on the above data, provide a comprehensive rationale that:
-1. Clearly states the final assigned rating (considering initial, adjusted, or overridden rating).
-2. Highlights the most significant raw data points and derived metrics that influenced the score.
-3. Explains how the selected rating model's weights impacted the final score, referencing specific categories.
-4. Justifies the final rating by connecting the calculated scores to the chosen rating scale.
-5. If applicable, explains the reason for any adjustments or overrides.
-
-Ensure the explanation is professional, concise, and easy to understand for financial stakeholders. Focus on the most impactful factors.`,
+Provide a professional rationale that justifies the assigned rating based on the economic, fiscal, and external data points provided. Connect the quantitative scores to the final credit designation on the {{{ratingScale.name}}} scale.`,
 });
 
 const generateRatingRationaleFlow = ai.defineFlow(

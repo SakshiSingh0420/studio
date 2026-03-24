@@ -47,6 +47,7 @@ const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
         "exports": 680000000000,
         "revenue": 590000000000,
         "external_debt": 620000000000,
+        "debt_service": 45000000000
     },
     "USA": {
         "gdp": 27000000000000,
@@ -60,7 +61,8 @@ const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
         "imports": 3600000000000,
         "exports": 2900000000000,
         "revenue": 5000000000000,
-        "external_debt": 25000000000000
+        "external_debt": 25000000000000,
+        "debt_service": 900000000000
     },
     "Brazil": {
         "gdp": 2000000000000,
@@ -74,7 +76,8 @@ const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
         "imports": 260000000000,
         "exports": 310000000000,
         "revenue": 330000000000,
-        "external_debt": 680000000000
+        "external_debt": 680000000000,
+        "debt_service": 80000000000
     }
 }
 
@@ -153,20 +156,16 @@ export default function RatingExecutionPage() {
         load()
     }, [id])
 
-    // Live Calculation of Derived Parameters for Step 1
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
-        
         const valuesBySlug: Record<string, number> = {};
         parameters.forEach(p => {
             if (p.type === 'raw') {
                 valuesBySlug[p.slug] = factSheet[p.id] || 0;
             }
         });
-
         const results: Record<string, number> = {};
         const derived = parameters.filter(p => p.type === 'derived' && p.formula);
-        
         for (let pass = 0; pass < 2; pass++) {
             derived.forEach(p => {
                 const val = evaluateFormula(p.formula!, valuesBySlug);
@@ -174,75 +173,49 @@ export default function RatingExecutionPage() {
                 valuesBySlug[p.slug] = val;
             });
         }
-        
         return results;
     }, [factSheet, parameters]);
 
     const handleAutoFill = async () => {
         if (!country || !parameters.length) return
         setIsFetchingAuto(true)
-        
         await new Promise(r => setTimeout(r, 600))
-        
         const mockData = MOCK_MARKET_DATA[country.name]
         if (!mockData) {
-            toast({ 
-                title: "Source Data Unavailable", 
-                description: `No automated source data found for ${country.name}.`, 
-                variant: "destructive" 
-            })
+            toast({ title: "Source Unavailable", description: `No mock data for ${country.name}.`, variant: "destructive" })
             setIsFetchingAuto(false)
             return
         }
-
         let syncCount = 0
         const updatedFilled = new Set(autoFilledFields)
-
         setFactSheet(prev => {
             const next = { ...prev };
             parameters.forEach(p => {
                 if (p.type === 'raw' && p.dataSource.includes('Auto')) {
                     const val = mockData[p.slug]
                     if (val !== undefined) {
-                        if (!prev[p.id] || prev[p.id] === 0) {
-                            next[p.id] = val
-                            updatedFilled.add(p.id)
-                            syncCount++
-                        }
+                        next[p.id] = val
+                        updatedFilled.add(p.id)
+                        syncCount++
                     }
                 }
             })
             return next;
         })
-
         setAutoFilledFields(updatedFilled)
-        
-        if (syncCount > 0) {
-            toast({ title: "Data Synchronized", description: `Successfully synchronized ${syncCount} parameters for ${country.name}.` })
-        } else {
-            toast({ title: "Already Up-to-date", description: "No additional automated data found." })
-        }
+        toast({ title: "Data Synchronized", description: `Updated ${syncCount} parameters for ${country.name}.` })
         setIsFetchingAuto(false)
     }
 
     const handleRun = () => {
-        if (!selectedModel || !selectedScale) {
-            toast({ title: "Configuration Error", description: "Please select a model and scale." })
-            return
-        }
-        
-        // Final numeric values for the engine
+        if (!selectedModel || !selectedScale) return
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
             if (p.type === 'raw') {
                 numericInputs[p.id] = Number(factSheet[p.id]) || 0;
             }
         });
-
-        console.log("Running Rating Engine with Inputs:", numericInputs);
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters);
-        console.log("Rating Engine Result:", result);
-
         setCalculation(result)
         setStep("calculate")
     }
@@ -253,23 +226,21 @@ export default function RatingExecutionPage() {
         try {
             const suggested = await suggestFactSheetData({ countryName: country.name })
             const filled = new Set(autoFilledFields)
-            
             setFactSheet(prev => {
                 const next = { ...prev };
                 parameters.forEach(p => {
-                    if (p.type === 'raw' && (suggested as any)[p.slug] !== undefined) {
-                        if (!prev[p.id] || prev[p.id] === 0) {
-                            next[p.id] = (suggested as any)[p.slug]
-                            filled.add(p.id)
-                        }
+                    const val = (suggested as any)[p.slug];
+                    if (p.type === 'raw' && val !== undefined && val !== null) {
+                        next[p.id] = val
+                        filled.add(p.id)
                     }
                 })
                 return next;
             });
             setAutoFilledFields(filled)
-            toast({ title: "AI Synthesis Complete", description: "Fact sheet updated with market-derived AI suggestions." })
+            toast({ title: "AI Synthesis Complete", description: "Updated with market-derived AI suggestions." })
         } catch (e) {
-            toast({ title: "AI Service Error", variant: "destructive", description: "Could not retrieve analytical suggestions." })
+            toast({ title: "AI Error", variant: "destructive", description: "Failed to fetch analytical suggestions." })
         } finally {
             setIsGenerating(false)
         }
@@ -305,30 +276,22 @@ export default function RatingExecutionPage() {
             countryId: country.id,
             modelId: selectedModel.id,
             scaleId: selectedScale.id,
-            rawData: factSheet,
-            derivedMetrics: calculation.derivedMetrics,
-            transformedScores: calculation.transformedScores,
-            weightedScores: calculation.weightedScores,
             finalScore: calculation.finalScore,
             initialRating: calculation.initialRating,
             approvalStatus: 'pending',
             reason: rationale
         })
-        toast({ title: "Session archived", description: "Rating results have been submitted for committee signature." })
+        toast({ title: "Session Archived" })
         router.push('/')
     }
 
     if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-primary w-8 h-8" /></div>
-    if (!country) return <div className="p-8 text-center font-bold">Country record not found.</div>
-
-    const rawParameters = parameters.filter(p => p.type === 'raw');
-    const derivedParameters = parameters.filter(p => p.type === 'derived');
 
     return (
         <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-primary">Execute Rating: {country.name}</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-primary">Execute Rating: {country?.name}</h1>
                     <p className="text-muted-foreground mt-1 text-lg">Phase: <span className="capitalize text-foreground font-semibold">{step}</span></p>
                 </div>
                 <div className="flex gap-2">
@@ -342,265 +305,121 @@ export default function RatingExecutionPage() {
             <div className="grid gap-6 lg:grid-cols-12">
                 <div className="lg:col-span-3 space-y-6">
                     <Card>
-                        <CardHeader>
-                            <CardTitle className="text-sm font-bold uppercase text-muted-foreground">Analytic Framework</CardTitle>
-                        </CardHeader>
+                        <CardHeader><CardTitle className="text-sm font-bold uppercase text-muted-foreground">Framework</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <label className="text-xs font-semibold">Analytical Model</label>
+                                <label className="text-xs font-semibold">Model</label>
                                 <Select onValueChange={(v) => setSelectedModel(models.find(m => m.id === v)!)} value={selectedModel?.id}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select Model" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {models.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
-                                    </SelectContent>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>{models.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-semibold">Rating Scale</label>
+                                <label className="text-xs font-semibold">Scale</label>
                                 <Select onValueChange={(v) => setSelectedScale(scales.find(s => s.id === v)!)} value={selectedScale?.id}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select Scale" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                                    </SelectContent>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>{scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                         </CardContent>
                     </Card>
-
-                    {selectedModel && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle className="text-sm font-bold uppercase text-muted-foreground">Pillar Weights</CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-2">
-                                {Object.entries(selectedModel.weights).map(([k, v]) => {
-                                    const p = parameters.find(param => param.id === k)
-                                    return (
-                                        <div key={k} className="flex justify-between text-xs border-b pb-1 last:border-0">
-                                            <span className="truncate pr-2">{p?.name || k}</span>
-                                            <span className="font-bold text-primary">{v}%</span>
-                                        </div>
-                                    )
-                                })}
-                            </CardContent>
-                        </Card>
-                    )}
                 </div>
 
                 <div className="lg:col-span-9">
                     {step === "input" && (
                         <Card>
                             <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b pb-6">
-                                <div>
-                                    <CardTitle>Sovereign Fact Sheet</CardTitle>
-                                    <CardDescription>Aggregate raw data points for current reporting cycle.</CardDescription>
-                                </div>
+                                <div><CardTitle>Fact Sheet</CardTitle></div>
                                 <div className="flex gap-2">
-                                    <Button size="sm" variant="outline" onClick={handleAutoFill} disabled={isFetchingAuto} className="border-green-200 text-green-700 hover:bg-green-50 shadow-sm">
-                                        <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isFetchingAuto && "animate-spin")} /> {isFetchingAuto ? "Synchronizing..." : "Auto Fetch Data"}
+                                    <Button size="sm" variant="outline" onClick={handleAutoFill} disabled={isFetchingAuto}>
+                                        <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isFetchingAuto && "animate-spin")} /> Auto Fetch
                                     </Button>
-                                    <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating} className="shadow-sm">
-                                        <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500" /> {isGenerating ? "Synthesizing AI..." : "AI Suggestions"}
+                                    <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating}>
+                                        <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500" /> AI Suggest
                                     </Button>
                                 </div>
                             </CardHeader>
                             <CardContent className="pt-8">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                    {rawParameters.map((p) => {
-                                        const isAuto = p.dataSource.includes('Auto');
-                                        const isFilled = autoFilledFields.has(p.id);
-
-                                        return (
-                                            <div key={p.id} className="space-y-1.5 group relative">
-                                                <label className="text-xs font-bold text-muted-foreground flex items-center justify-between">
-                                                    <span className="flex items-center gap-1.5">
-                                                        {p.name}
-                                                        {isAuto && <Database className="w-3 h-3 text-green-500 opacity-60" />}
-                                                    </span>
-                                                    <span className="text-[9px] font-mono opacity-40 uppercase tracking-tighter">{p.slug}</span>
-                                                </label>
-                                                <div className="relative">
-                                                    <Input 
-                                                        type="number" 
-                                                        value={factSheet[p.id] ?? ""} 
-                                                        onChange={e => {
-                                                            const val = e.target.value === "" ? 0 : Number(e.target.value)
-                                                            setFactSheet(prev => ({...prev, [p.id]: val}))
-                                                            setAutoFilledFields(prev => {
-                                                                const next = new Set(prev);
-                                                                next.delete(p.id);
-                                                                return next;
-                                                            });
-                                                        }} 
-                                                        placeholder="0"
-                                                        className={cn(
-                                                            "h-10 transition-all font-mono",
-                                                            isFilled && "bg-green-50/40 border-green-200 focus:bg-background pr-16"
-                                                        )}
-                                                    />
-                                                    {isFilled && (
-                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-green-600 font-black uppercase pointer-events-none">
-                                                            Auto
-                                                        </span>
-                                                    )}
+                                    {parameters.filter(p => p.type === 'raw').map((p) => (
+                                        <div key={p.id} className="space-y-1.5">
+                                            <label className="text-xs font-bold text-muted-foreground flex items-center justify-between">
+                                                <span>{p.name}</span>
+                                                <span className="text-[9px] font-mono opacity-40 uppercase">{p.slug}</span>
+                                            </label>
+                                            <div className="relative">
+                                                <Input 
+                                                    type="number" 
+                                                    value={factSheet[p.id] ?? ""} 
+                                                    onChange={e => setFactSheet({...factSheet, [p.id]: Number(e.target.value)})} 
+                                                    className={cn(autoFilledFields.has(p.id) && "bg-green-50/40 border-green-200")}
+                                                />
+                                                {autoFilledFields.has(p.id) && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-green-600 font-black">AUTO</span>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-12 pt-8 border-t">
+                                    <h3 className="text-sm font-bold mb-6">Derived Ratios</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {parameters.filter(p => p.type === 'derived').map(p => (
+                                            <div key={p.id} className="p-4 bg-muted/10 rounded-lg border flex justify-between items-center">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-bold truncate">{p.name}</p>
+                                                    <p className="text-[10px] text-muted-foreground font-mono">{p.formula}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-sm font-black text-primary font-mono">{(liveDerivedMetrics[p.id] ?? 0).toLocaleString()}</p>
                                                 </div>
                                             </div>
-                                        )
-                                    })}
-                                    {rawParameters.length === 0 && (
-                                        <div className="col-span-full py-20 text-center border-2 border-dashed rounded-lg bg-muted/20">
-                                            <p className="text-sm text-muted-foreground font-medium">No input parameters registered.</p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {derivedParameters.length > 0 && (
-                                    <div className="mt-12 pt-8 border-t">
-                                        <h3 className="text-sm font-bold mb-6 flex items-center gap-2">
-                                            Calculated Ratios & Logic
-                                            <Info className="w-4 h-4 text-muted-foreground opacity-70" />
-                                        </h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {derivedParameters.map(p => {
-                                                const val = liveDerivedMetrics[p.id] ?? 0;
-                                                return (
-                                                    <div key={p.id} className="p-4 bg-muted/10 rounded-lg border border-border/40 flex justify-between items-center group hover:bg-muted/30 transition-colors">
-                                                        <div className="min-w-0 flex-1">
-                                                            <p className="text-xs font-bold truncate">{p.name}</p>
-                                                            <p className="text-[10px] text-muted-foreground font-mono mt-1 bg-background inline-block px-1.5 py-0.5 rounded truncate max-w-[150px]">{p.formula}</p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <p className="text-sm font-black text-primary font-mono">{val.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-                                                            <Badge variant="outline" className="text-[8px] uppercase font-mono border-none bg-muted/50 h-4">Derived</Badge>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
+                                        ))}
                                     </div>
-                                )}
+                                </div>
                             </CardContent>
                         </Card>
                     )}
 
-                    {step === "calculate" && calculation && selectedModel && (
-                        <div className="space-y-6">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Analytical Breakdown</CardTitle>
-                                    <CardDescription>Quantifying sovereign risk through factor-weighted transformation.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <Table className="financial-table border rounded-xl overflow-hidden shadow-sm">
-                                        <TableHeader className="bg-muted/50">
-                                            <TableRow>
-                                                <TableHead>Risk Identifier</TableHead>
-                                                <TableHead>Final Value</TableHead>
-                                                <TableHead>Trans. Score</TableHead>
-                                                <TableHead>Model Weight</TableHead>
-                                                <TableHead className="text-right">Impact</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {Object.keys(selectedModel.weights).map((pid) => {
-                                                const p = parameters.find(param => param.id === pid)
-                                                const val = calculation.actualValuesUsed[pid] ?? 0;
-                                                const score = calculation.transformedScores[pid] ?? 1;
-                                                const weight = selectedModel.weights[pid] ?? 0;
-                                                const impact = calculation.weightedScores[pid] ?? 0;
-                                                
-                                                return (
-                                                    <TableRow key={pid} className="hover:bg-muted/20">
-                                                        <TableCell>
-                                                            <div className="flex flex-col">
-                                                                <span className="font-bold text-sm">{p?.name || pid}</span>
-                                                                <span className="text-[9px] text-muted-foreground font-mono uppercase">
-                                                                    {p?.type === 'derived' ? `Formula: ${p?.formula}` : p?.slug}
-                                                                </span>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className={cn("font-mono", p?.type === 'derived' && "text-primary font-black")}>
-                                                            {typeof val === 'number' ? val.toLocaleString(undefined, { maximumFractionDigits: 2 }) : val}
-                                                        </TableCell>
-                                                        <TableCell className="text-center font-extrabold text-primary">
-                                                            {score}
-                                                        </TableCell>
-                                                        <TableCell className="text-muted-foreground">{weight}%</TableCell>
-                                                        <TableCell className="text-right font-mono font-black bg-muted/10">
-                                                            {impact.toFixed(3)}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                    <div className="mt-8 grid grid-cols-2 gap-6">
-                                        <div className="bg-primary text-white p-8 rounded-2xl shadow-xl flex flex-col justify-center">
-                                            <p className="text-[10px] uppercase font-black opacity-80 tracking-widest">Aggregate Score</p>
-                                            <div className="text-6xl font-black mt-2">{calculation.finalScore.toFixed(1)}%</div>
-                                        </div>
-                                        <div className="bg-white p-8 rounded-2xl shadow-xl border-4 border-primary/10 flex flex-col justify-center">
-                                            <p className="text-[10px] uppercase font-black text-primary opacity-80 tracking-widest">Implied Rating</p>
-                                            <div className="text-6xl font-black text-primary mt-2">{calculation.initialRating}</div>
-                                        </div>
+                    {step === "calculate" && calculation && (
+                        <Card>
+                            <CardHeader><CardTitle>Analytical Breakdown</CardTitle></CardHeader>
+                            <CardContent>
+                                <Table className="border rounded-xl">
+                                    <TableHeader><TableRow><TableHead>Factor</TableHead><TableHead>Value</TableHead><TableHead>Score</TableHead><TableHead>Weight</TableHead><TableHead className="text-right">Impact</TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                        {Object.keys(selectedModel?.weights || {}).map((pid) => {
+                                            const p = parameters.find(param => param.id === pid)
+                                            return (
+                                                <TableRow key={pid}>
+                                                    <TableCell><span className="font-bold text-sm">{p?.name || pid}</span></TableCell>
+                                                    <TableCell className="font-mono">{(calculation.actualValuesUsed[pid] ?? 0).toLocaleString()}</TableCell>
+                                                    <TableCell className="font-extrabold text-primary">{calculation.transformedScores[pid]}</TableCell>
+                                                    <TableCell>{selectedModel?.weights[pid]}%</TableCell>
+                                                    <TableCell className="text-right font-mono font-black">{(calculation.weightedScores[pid] || 0).toFixed(3)}</TableCell>
+                                                </TableRow>
+                                            )
+                                        })}
+                                    </Body>
+                                </Table>
+                                <div className="mt-8 grid grid-cols-2 gap-6">
+                                    <div className="bg-primary text-white p-8 rounded-2xl">
+                                        <p className="text-[10px] font-black uppercase opacity-80">Aggregate Score</p>
+                                        <div className="text-6xl font-black">{calculation.finalScore.toFixed(1)}%</div>
                                     </div>
-                                </CardContent>
-                            </Card>
-                        </div>
+                                    <div className="bg-white p-8 rounded-2xl border-4 border-primary/10">
+                                        <p className="text-[10px] font-black uppercase text-primary opacity-80">Implied Rating</p>
+                                        <div className="text-6xl font-black text-primary">{calculation.initialRating}</div>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
                     )}
 
                     {step === "review" && calculation && (
                         <div className="grid gap-6 md:grid-cols-2">
-                            <Card className="shadow-lg border-t-4 border-t-primary">
-                                <CardHeader className="bg-muted/20">
-                                    <CardTitle>Qualitative Adjustments</CardTitle>
-                                </CardHeader>
-                                <CardContent className="pt-8 space-y-8">
-                                    <div className="flex gap-4">
-                                        <Button variant="outline" className="flex-1 h-20 text-lg font-black" onClick={() => setAdjustment(prev => prev + 1)}>
-                                            <ArrowUp className="w-6 h-6 mr-2 text-green-600" /> Upgrade
-                                        </Button>
-                                        <Button variant="outline" className="flex-1 h-20 text-lg font-black" onClick={() => setAdjustment(prev => prev - 1)}>
-                                            <ArrowDown className="w-6 h-6 mr-2 text-red-600" /> Downgrade
-                                        </Button>
-                                    </div>
-                                    <div className="p-8 bg-muted/30 rounded-2xl border-2 border-dashed text-center">
-                                        <p className="text-[10px] font-black text-muted-foreground uppercase">Target Designation</p>
-                                        <p className="text-6xl font-black text-primary mt-3">{calculation.initialRating}</p>
-                                        <p className="text-xs font-bold text-muted-foreground mt-4">Manual Bias: {adjustment > 0 ? `+${adjustment}` : adjustment} notch(es)</p>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="shadow-lg border-t-4 border-t-accent">
-                                <CardHeader className="bg-muted/20 flex flex-row items-center justify-between">
-                                    <div>
-                                        <CardTitle>AI Analysis</CardTitle>
-                                    </div>
-                                    <Button size="sm" variant="secondary" onClick={handleGenerateRationale} disabled={isGenerating}>
-                                        <Zap className="w-4 h-4 mr-2" /> {isGenerating ? "Synthesizing..." : "Generate rationale"}
-                                    </Button>
-                                </CardHeader>
-                                <CardContent className="pt-8 min-h-[400px]">
-                                    {isGenerating ? (
-                                        <div className="flex flex-col items-center justify-center h-full space-y-4">
-                                            <Loader2 className="w-12 h-12 text-primary animate-spin" />
-                                            <p className="text-sm font-medium animate-pulse">Analyzing macroeconomic dataset...</p>
-                                        </div>
-                                    ) : rationale ? (
-                                        <div className="prose prose-sm max-h-[500px] overflow-auto">
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{rationale}</p>
-                                        </div>
-                                    ) : (
-                                        <div className="h-full flex flex-col items-center justify-center opacity-50">
-                                            <Database className="w-12 h-12 mb-4" />
-                                            <p className="text-sm font-bold">No rationale generated</p>
-                                        </div>
-                                    )}
+                            <Card className="border-t-4 border-t-primary">
+                                <CardHeader><CardTitle>AI Rationale</CardTitle></CardHeader>
+                                <CardContent className="min-h-[300px]">
+                                    {isGenerating ? <div className="flex flex-col items-center justify-center h-full"><Loader2 className="animate-spin" /></div> : rationale ? <p className="text-sm whitespace-pre-wrap">{rationale}</p> : <Button onClick={handleGenerateRationale}>Generate AI Narrative</Button>}
                                 </CardContent>
                             </Card>
                         </div>

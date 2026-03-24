@@ -47,7 +47,7 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
     if (!formula) return 0;
 
     let expression = formula.toLowerCase();
-    // Sort slugs by length descending to prevent partial matches (e.g., 'gdp' matching 'gdp_growth')
+    // Sort slugs by length descending to prevent partial matches
     const sortedSlugs = Object.keys(valuesBySlug).sort((a, b) => b.length - a.length);
     
     for (const slug of sortedSlugs) {
@@ -58,7 +58,6 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
 
     const remainingAlpha = expression.replace(/[0-9.+\-*/()\s]/g, '');
     if (/[a-z]/i.test(remainingAlpha)) {
-      console.warn("Formula contains unresolved variables:", remainingAlpha);
       return 0;
     }
 
@@ -68,7 +67,6 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
     if (typeof result !== 'number' || !isFinite(result)) return 0;
     return result;
   } catch (e) {
-    console.error("Formula Evaluation Error:", e);
     return 0;
   }
 }
@@ -109,16 +107,21 @@ export function runDynamicRating(
   const context: Record<string, number> = {};
   parameters.forEach(p => {
     const val = valuesById[p.id] ?? 0;
-    const normalizedSlug = p.slug.toLowerCase().replace(/-/g, '_');
-    context[normalizedSlug] = val;
-    actualValuesUsed[p.id] = val; // Default to input value
+    const slugSource = p.slug || p.id || "";
+    const normalizedSlug = slugSource.toLowerCase().replace(/-/g, '_');
+    if (normalizedSlug) {
+      context[normalizedSlug] = val;
+    }
+    actualValuesUsed[p.id] = val;
   });
 
-  console.log("Calculation Context (Slugs):", context);
-
-  // 2. Run Hardcoded Calculation Layer (Demo Resilience)
+  // 2. Run Failsafe Hardcoded Calculation Layer
   const runHardcoded = (targetSlugs: string[], sourceSlugs: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
-    const p = parameters.find(param => targetSlugs.includes(param.slug.toLowerCase().replace(/-/g, '_')));
+    const p = parameters.find(param => {
+        const s = param.slug || param.id || "";
+        return targetSlugs.includes(s.toLowerCase().replace(/-/g, '_'));
+    });
+    
     if (p) {
       const localCtx: Record<string, number> = {};
       Object.entries(sourceSlugs).forEach(([key, variations]) => {
@@ -134,16 +137,16 @@ export function runDynamicRating(
       });
 
       const result = logic(localCtx);
-      context[p.slug.toLowerCase().replace(/-/g, '_')] = result;
+      const slugKey = (p.slug || p.id || "").toLowerCase().replace(/-/g, '_');
+      if (slugKey) context[slugKey] = result;
       actualValuesUsed[p.id] = result;
       derivedMetrics[p.id] = result;
-      console.log(`Hardcoded Calculation: ${p.slug} = ${result}`);
     }
   };
 
   // Debt to GDP
   runHardcoded(['debt_to_gdp', 'debt_to_gdp_ratio', 'debt_gdp'], 
-    { debt: ['government_debt', 'debt', 'total_debt'], gdp: ['gdp'] }, 
+    { debt: ['government_debt', 'debt', 'total_debt'], gdp: ['gdp', 'nominal_gdp'] }, 
     (c) => (c.debt / (c.gdp || 1)) * 100
   );
 
@@ -155,14 +158,12 @@ export function runDynamicRating(
 
   // 3. Run Formula Pass for other derived parameters
   parameters.filter(p => p.type === 'derived' && p.formula).forEach(p => {
-    // Only compute if hardcoded didn't already set it
     if (derivedMetrics[p.id] === undefined) {
       const result = evaluateFormula(p.formula!, context);
-      const normalizedSlug = p.slug.toLowerCase().replace(/-/g, '_');
-      context[normalizedSlug] = result;
+      const slugKey = (p.slug || p.id || "").toLowerCase().replace(/-/g, '_');
+      if (slugKey) context[slugKey] = result;
       actualValuesUsed[p.id] = result;
       derivedMetrics[p.id] = result;
-      console.log(`Formula Calculation: ${p.slug} = ${result}`);
     }
   });
 

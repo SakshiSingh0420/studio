@@ -49,7 +49,6 @@ export default function RatingExecutionPage() {
     
     const [calculation, setCalculation] = useState<any>(null)
     const [isGenerating, setIsGenerating] = useState(false)
-    const [isFetchingAuto, setIsFetchingAuto] = useState(false)
     const [rationale, setRationale] = useState("")
     const [step, setStep] = useState<"input" | "calculate" | "review">("input")
     const [loading, setLoading] = useState(true)
@@ -93,18 +92,22 @@ export default function RatingExecutionPage() {
         parameters.forEach(p => {
             if (p.type === 'raw') {
                 const rawVal = factSheet[p.id];
-                const normalizedSlug = p.slug.toLowerCase().replace(/-/g, '_');
-                context[normalizedSlug] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+                // Safety check for p.slug to avoid toLowerCase() error
+                const slugSource = p.slug || p.id || "";
+                const normalizedSlug = slugSource.toLowerCase().replace(/-/g, '_');
+                if (normalizedSlug) {
+                    context[normalizedSlug] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+                }
             }
         });
         
         const results: Record<string, number> = {};
         parameters.filter(p => p.type === 'derived').forEach(p => {
-            const normalizedTarget = p.slug.toLowerCase().replace(/-/g, '_');
+            const slugSource = p.slug || p.id || "";
+            const normalizedTarget = slugSource.toLowerCase().replace(/-/g, '_');
             
-            // Hardcoded logic for common ratios in the UI preview
             if (normalizedTarget === 'debt_to_gdp') {
-                const debt = context['government_debt'] || context['debt'] || 0;
+                const debt = context['government_debt'] || context['debt'] || context['total_debt'] || 0;
                 const gdp = context['gdp'] || 1;
                 results[p.id] = (debt / gdp) * 100;
             } else if (p.formula) {
@@ -126,7 +129,6 @@ export default function RatingExecutionPage() {
 
         // Trigger dynamic rating calculation
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
-        console.log("Analysis Result:", result);
         setCalculation(result)
         setStep("calculate")
     }
@@ -140,7 +142,8 @@ export default function RatingExecutionPage() {
             setFactSheet(prev => {
                 const next = { ...prev };
                 parameters.forEach(p => {
-                    const normSlug = p.slug.toLowerCase().replace(/-/g, '_');
+                    const slugSource = p.slug || p.id || "";
+                    const normSlug = slugSource.toLowerCase().replace(/-/g, '_');
                     const val = (suggested as any)[normSlug];
                     if (p.type === 'raw' && val !== undefined && val !== null) {
                         next[p.id] = val
@@ -247,7 +250,7 @@ export default function RatingExecutionPage() {
                                             <div key={p.id} className="p-4 bg-muted/20 rounded-lg border flex justify-between items-center">
                                                 <div>
                                                     <p className="text-xs font-bold">{p.name}</p>
-                                                    <p className="text-[9px] text-muted-foreground">{p.slug}</p>
+                                                    <p className="text-[9px] text-muted-foreground">{p.slug || p.id}</p>
                                                 </div>
                                                 <p className="text-sm font-black text-primary">{(liveDerivedMetrics[p.id] ?? 0).toFixed(2)}</p>
                                             </div>

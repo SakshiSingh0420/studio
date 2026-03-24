@@ -398,7 +398,7 @@ export default function RatingExecutionPage() {
                                                 </TableRow>
                                             )
                                         })}
-                                    </Body>
+                                    </TableBody>
                                 </Table>
                                 <div className="mt-8 grid grid-cols-2 gap-6">
                                     <div className="bg-primary text-white p-8 rounded-2xl">

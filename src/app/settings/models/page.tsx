@@ -77,10 +77,52 @@ export default function ModelBuilderPage() {
       });
       return;
     }
-    await saveModel(selectedModel as RatingModel)
-    setSelectedModel(null)
-    load()
-    toast({ title: "Analytical Framework Finalized" })
+
+    // 1. Backup before save
+    const backup = { ...selectedModel };
+
+    // 2. Safe Data Cleaning Function
+    const cleanObject = (obj: any): any => {
+        if (!obj || typeof obj !== 'object') return obj;
+        if (Array.isArray(obj)) {
+            return obj.map(item => cleanObject(item));
+        }
+        const cleaned: any = {};
+        Object.keys(obj).forEach(key => {
+            const val = obj[key];
+            if (val === undefined) return;
+            if (val !== null && typeof val === 'object') {
+                cleaned[key] = cleanObject(val);
+            } else {
+                cleaned[key] = val;
+            }
+        });
+        return cleaned;
+    };
+
+    try {
+        const cleanedData = cleanObject(selectedModel);
+        
+        // 3. Save operation (returns the ID, ensuring we don't save 'id' inside the doc)
+        const savedId = await saveModel(cleanedData);
+        
+        // 4. Update state with ID if it was a new model, but DO NOT reset form
+        if (!selectedModel.id) {
+            setSelectedModel(prev => prev ? { ...prev, id: savedId } : null);
+        }
+        
+        await load();
+        toast({ title: "Analytical Framework Finalized" });
+    } catch (error) {
+        console.error("Firestore Save Error:", error);
+        // 5. Restore previous state automatically if save fails
+        setSelectedModel(backup);
+        toast({ 
+            title: "Save Failed", 
+            description: "Model not saved, your data is safe. Please try again.", 
+            variant: "destructive" 
+        });
+    }
   }
 
   const toggleParam = (pid: string) => {
@@ -279,7 +321,7 @@ export default function ModelBuilderPage() {
                                                                     <Settings2 className="w-3 h-3" />
                                                                     Scoring Transformations (1-5 Scale)
                                                                 </h4>
-                                                                <div className="flex items-center gap-2">
+                                                                <div className="flex items-center justify-between gap-2">
                                                                     <span className="text-[10px] font-medium text-muted-foreground">Inverse Logic?</span>
                                                                     <Checkbox 
                                                                         checked={selectedModel.transformations?.[p.id]?.inverse} 

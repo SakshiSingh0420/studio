@@ -18,16 +18,34 @@ async function getOne<T>(coll: string, id: string): Promise<T | null> {
 
 // PARAMETERS
 export const getParameters = () => getAll<Parameter>('parameters');
-export const saveParameter = (p: Parameter) => setDoc(doc(db, 'parameters', p.id || doc(collection(db, 'parameters')).id), p, { merge: true });
+export const saveParameter = async (p: any) => {
+    const id = p.id || doc(collection(db, 'parameters')).id;
+    const data = { ...p };
+    delete data.id;
+    await setDoc(doc(db, 'parameters', id), data, { merge: true });
+    return id;
+};
 export const deleteParameter = (id: string) => deleteDoc(doc(db, 'parameters', id));
 
 // MODELS
 export const getModels = () => getAll<RatingModel>('models');
-export const saveModel = (m: RatingModel) => setDoc(doc(db, 'models', m.id || doc(collection(db, 'models')).id), m, { merge: true });
+export const saveModel = async (m: any) => {
+    const id = m.id || doc(collection(db, 'models')).id;
+    const data = { ...m };
+    delete data.id; // Ensure ID is not stored inside the document data
+    await setDoc(doc(db, 'models', id), data, { merge: true });
+    return id;
+};
 
 // SCALES
 export const getScales = () => getAll<RatingScale>('scales');
-export const saveScale = (s: RatingScale) => setDoc(doc(db, 'scales', s.id || doc(collection(db, 'scales')).id), s, { merge: true });
+export const saveScale = async (s: any) => {
+    const id = s.id || doc(collection(db, 'scales')).id;
+    const data = { ...s };
+    delete data.id;
+    await setDoc(doc(db, 'scales', id), data, { merge: true });
+    return id;
+};
 
 // COUNTRIES
 export interface Country { id: string; name: string; region: string; incomeGroup: string; currency: string; population: number; gdp: number; }

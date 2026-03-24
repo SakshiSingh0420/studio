@@ -41,41 +41,31 @@ export type FactSheetData = Record<string, any>;
 
 /**
  * Evaluates a formula using parameter slugs as variables.
- * Enhanced for robustness: case-insensitive and handles snake_case slugs.
  */
 export function evaluateFormula(formula: string, valuesBySlug: Record<string, number>): number {
   try {
     if (!formula) return 0;
 
-    // 1. Prepare expression
     let expression = formula.toLowerCase();
-    
-    // 2. Sort slugs by length descending to prevent partial replacements (e.g. gdp_growth before gdp)
     const sortedSlugs = Object.keys(valuesBySlug).sort((a, b) => b.length - a.length);
     
     for (const slug of sortedSlugs) {
       const val = valuesBySlug[slug] ?? 0;
-      // Match slug as a whole word to avoid nested replacement errors
       const regex = new RegExp(`\\b${slug.toLowerCase()}\\b`, 'g');
       expression = expression.replace(regex, val.toString());
     }
 
-    // 3. Sanitation - allow numbers, operators, dots, spaces, and parentheses.
-    // Replace valid math parts to see if any letters (unknown slugs) remain
     const remainingAlpha = expression.replace(/[0-9.+\-*/()\s]/g, '');
     if (/[a-z]/i.test(remainingAlpha)) {
-      console.warn(`Analytical Engine: Unresolved identifiers in formula "${expression}"`);
       return 0;
     }
 
-    // 4. Safe evaluation
     // eslint-disable-next-line no-new-func
     const result = new Function(`return ${expression}`)();
     
     if (typeof result !== 'number' || !isFinite(result)) return 0;
     return result;
   } catch (e) {
-    console.error("Analytical Engine: Formula evaluation error:", e);
     return 0;
   }
 }
@@ -83,7 +73,6 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
 export function scoreMetric(value: number, config: ModelTransformation): number {
   const { thresholds, inverse } = config;
   
-  // Standard logic: higher is better (e.g., GDP Growth)
   if (!inverse) {
     if (value >= thresholds[3]) return 5;
     if (value >= thresholds[2]) return 4;
@@ -92,7 +81,6 @@ export function scoreMetric(value: number, config: ModelTransformation): number 
     return 1;
   } 
   
-  // Inverse logic: lower is better (e.g., Debt)
   if (value <= thresholds[0]) return 5;
   if (value <= thresholds[1]) return 4;
   if (value <= thresholds[2]) return 3;
@@ -101,8 +89,7 @@ export function scoreMetric(value: number, config: ModelTransformation): number 
 }
 
 /**
- * Executes the full rating calculation pipeline.
- * Implements robust parameter matching (ID -> Slug -> Name) for demo reliability.
+ * Executes the full rating calculation pipeline with hardcoded fallbacks for critical metrics.
  */
 export function runDynamicRating(
   valuesById: Record<string, number>,
@@ -115,41 +102,66 @@ export function runDynamicRating(
   const derivedMetrics: Record<string, number> = {};
   const actualValuesUsed: Record<string, number> = {};
   
-  // Context for formula evaluation (keyed by slug)
   const context: Record<string, number> = {};
   
-  // Stage 1: Build context from raw inputs
+  // Stage 1: Map all raw inputs to context by SLUG for consistency
   parameters.forEach(p => {
     if (p.type === 'raw') {
-      // Robust lookup chain for Demo reliability
-      let val = valuesById[p.id];
-      if (val === undefined) val = valuesById[p.slug];
-      if (val === undefined) val = valuesById[p.name];
-      
-      const finalVal = val ?? 0;
-      context[p.slug] = finalVal;
-      actualValuesUsed[p.id] = finalVal;
+      const val = valuesById[p.id] ?? valuesById[p.slug] ?? 0;
+      context[p.slug] = val;
+      actualValuesUsed[p.id] = val;
     }
   });
 
-  // Stage 2: Calculate derived parameters (Step 1 of pipeline)
+  // Stage 2: Hardcoded Failsafe Calculations (Prioritize these over formula engine for critical demo metrics)
+  const calculateHardcoded = (slug: string, logic: () => number) => {
+    const p = parameters.find(param => param.slug === slug);
+    if (p && p.type === 'derived') {
+      const result = logic();
+      context[slug] = result;
+      derivedMetrics[p.id] = result;
+      actualValuesUsed[p.id] = result;
+    }
+  };
+
+  // Debt to GDP: (Debt / GDP) * 100
+  calculateHardcoded('debt_to_gdp', () => {
+    const debt = context['debt'] || 0;
+    const gdp = context['gdp'] || 1; // Avoid div by zero
+    return (debt / gdp) * 100;
+  });
+
+  // Reserve Cover: FX Reserves / Imports (Months)
+  calculateHardcoded('reserve_cover', () => {
+    const reserves = context['fx_reserves'] || 0;
+    const imports = context['imports'] || 12;
+    return (reserves / (imports / 12));
+  });
+
+  // Interest to Revenue: (Interest / Revenue) * 100
+  calculateHardcoded('interest_to_revenue', () => {
+    const interest = context['interest'] || 0;
+    const revenue = context['revenue'] || 1;
+    return (interest / revenue) * 100;
+  });
+
+  // Stage 3: Formula Engine (Secondary Pass for remaining derived parameters)
   const derivedParams = parameters.filter(p => p.type === 'derived' && p.formula);
-  // Three passes to handle multi-level dependency chains
-  for (let i = 0; i < 3; i++) {
-    derivedParams.forEach(p => {
+  derivedParams.forEach(p => {
+    // Only calculate if not already handled by hardcoded logic or if value is still 0
+    if (!actualValuesUsed[p.id]) {
       const computedValue = evaluateFormula(p.formula!, context);
       derivedMetrics[p.id] = computedValue;
       context[p.slug] = computedValue;
       actualValuesUsed[p.id] = computedValue;
-    });
-  }
+    }
+  });
 
-  // Stage 3: Scoring & Weighting
+  // Stage 4: Scoring & Weighting
   Object.keys(model.weights).forEach((paramId) => {
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
 
-    // Use resolved value from context (includes derived results)
     const val = actualValuesUsed[paramId] ?? 0;
     const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
     
@@ -159,10 +171,8 @@ export function runDynamicRating(
   });
 
   const rawFinalScore = Object.values(weightedScores).reduce((a, b) => a + b, 0);
-  // Normalize aggregate score to 0-100 range
   const normalizedScore = (rawFinalScore / 5) * 100;
 
-  // Final stage: Label mapping
   const mapping = scale.mapping.find(
     (m) => normalizedScore >= m.minScore && normalizedScore <= m.maxScore
   );

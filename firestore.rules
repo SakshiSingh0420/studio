@@ -2,15 +2,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to check if the user is authenticated
     function isSignedIn() {
       return request.auth != null;
     }
 
+    // Standard rules for sovereign rating entities
+    // We allow read/write for all collections to ensure smooth prototype operation
+    // Deployment trigger: Updated to resolve 'list' permission issues on /ratings
+    
     match /countries/{id} { allow read, write: if true; }
     match /parameters/{id} { allow read, write: if true; }
     match /models/{id} { allow read, write: if true; }
     match /scales/{id} { allow read, write: if true; }
     match /ratings/{id} { allow read, write: if true; }
     match /factSheets/{id} { allow read, write: if true; }
+    
+    // Explicitly allow recursive access if needed for nested data structures
+    match /{path=**} {
+      allow read, write: if isSignedIn();
+    }
   }
 }

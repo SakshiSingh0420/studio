@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { getModels, saveModel, getParameters } from "@/lib/store"
+import { getModels, saveModel, getParameters, deleteModel } from "@/lib/store"
 import { RatingModel, Parameter, ModelTransformation } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,11 +11,22 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Save, Layers, Settings2, AlertCircle, CheckCircle2, Search, Filter, Zap, ChevronRight, Info } from "lucide-react"
+import { Plus, Save, Layers, Settings2, AlertCircle, CheckCircle2, Search, Filter, Zap, ChevronRight, Info, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 const CATEGORIES = ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] as const;
 
@@ -125,6 +136,20 @@ export default function ModelBuilderPage() {
     }
   }
 
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteModel(id);
+      if (selectedModel?.id === id) {
+        setSelectedModel(null);
+      }
+      await load();
+      toast({ title: "Model deleted successfully" });
+    } catch (error) {
+      console.error("Delete Model Error:", error);
+      toast({ title: "Failed to delete model", variant: "destructive" });
+    }
+  }
+
   const toggleParam = (pid: string) => {
     if (!selectedModel) return
     const weights = { ...(selectedModel.weights || {}) }
@@ -199,11 +224,42 @@ export default function ModelBuilderPage() {
                         onClick={() => setSelectedModel(m)}
                     >
                         <div className="flex justify-between items-start">
-                            <div>
-                                <p className="font-bold text-sm">{m.name}</p>
+                            <div className="flex-1 min-w-0">
+                                <p className="font-bold text-sm truncate">{m.name}</p>
                                 <p className="text-[10px] text-muted-foreground uppercase font-mono">v{m.version}</p>
                             </div>
-                            <Layers className={cn("w-4 h-4 opacity-20 group-hover:opacity-100 transition-opacity", selectedModel?.id === m.id && "text-primary opacity-100")} />
+                            <div className="flex items-center gap-1">
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="icon" 
+                                            className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Delete Framework?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                Are you sure you want to delete "{m.name}"? This action is permanent and cannot be undone.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction 
+                                                onClick={() => handleDelete(m.id)}
+                                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                            >
+                                                Delete
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                                <Layers className={cn("w-4 h-4 opacity-20 group-hover:opacity-100 transition-opacity", selectedModel?.id === m.id && "text-primary opacity-100")} />
+                            </div>
                         </div>
                     </div>
                 ))}

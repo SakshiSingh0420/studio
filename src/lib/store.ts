@@ -36,6 +36,7 @@ export const saveModel = async (m: any) => {
     await setDoc(doc(db, 'models', id), data, { merge: true });
     return id;
 };
+export const deleteModel = (id: string) => deleteDoc(doc(db, 'models', id));
 
 // SCALES
 export const getScales = () => getAll<RatingScale>('scales');

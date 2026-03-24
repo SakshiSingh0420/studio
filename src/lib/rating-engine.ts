@@ -109,23 +109,31 @@ export function runDynamicRating(
   parameters.forEach(p => {
     const val = valuesById[p.id] ?? 0;
     context[p.slug] = val;
-    if (p.type === 'raw') {
-      actualValuesUsed[p.id] = val;
-    }
+    // We always want the ID map to have the value for the UI table
+    actualValuesUsed[p.id] = val;
   });
 
   // Stage 2: Hardcoded Calculation Layer for Demo Resilience
-  const calculateHardcoded = (targetSlug: string, sourceSlugs: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
-    // Find any parameter that matches this slug (to get its ID)
-    const p = parameters.find(param => param.slug === targetSlug);
+  // This ensures that even if IDs don't match, we calculate critical metrics by SLUG
+  const calculateHardcoded = (targetSlugs: string[], sourceSlugs: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
+    // Find ANY parameter that matches one of the target slugs
+    const p = parameters.find(param => targetSlugs.includes(param.slug.toLowerCase().replace(/-/g, '_')));
     
     if (p) {
       const localCtx: Record<string, number> = {};
       Object.entries(sourceSlugs).forEach(([key, variations]) => {
         let foundVal = 0;
         for (const v of variations) {
+          const normalizedV = v.toLowerCase().replace(/-/g, '_');
+          // Check context by slug or by ID
           if (context[v] !== undefined && context[v] !== 0) {
             foundVal = context[v];
+            break;
+          }
+          // Fallback check against parameters list to find the ID
+          const sourceParam = parameters.find(sp => sp.slug.toLowerCase().replace(/-/g, '_') === normalizedV);
+          if (sourceParam && valuesById[sourceParam.id]) {
+            foundVal = Number(valuesById[sourceParam.id]);
             break;
           }
         }
@@ -140,19 +148,19 @@ export function runDynamicRating(
   };
 
   // Debt to GDP: (Debt / GDP) * 100
-  calculateHardcoded('debt_to_gdp', 
-    { debt: ['debt', 'government_debt', 'total_debt', 'govt_debt'], gdp: ['gdp'] }, 
+  calculateHardcoded(['debt_to_gdp', 'debt-to-gdp'], 
+    { debt: ['government_debt', 'debt', 'total_debt', 'govt_debt'], gdp: ['gdp'] }, 
     (c) => (c.debt / (c.gdp || 1)) * 100
   );
 
-  // Reserve Cover: FX Reserves / Imports (Months)
-  calculateHardcoded('reserve_cover', 
+  // Reserve Cover: FX Reserves / (Imports / 12)
+  calculateHardcoded(['reserve_cover', 'reserves_cover'], 
     { res: ['fx_reserves', 'reserves', 'reserves_total'], imp: ['imports', 'total_imports'] }, 
     (c) => c.res / ((c.imp || 12) / 12)
   );
 
   // Interest to Revenue: (Interest / Revenue) * 100
-  calculateHardcoded('interest_to_revenue', 
+  calculateHardcoded(['interest_to_revenue', 'interest-to-revenue'], 
     { int: ['interest', 'interest_payments', 'debt_interest'], rev: ['revenue', 'government_revenue', 'total_revenue'] }, 
     (c) => (c.int / (c.rev || 1)) * 100
   );
@@ -168,6 +176,7 @@ export function runDynamicRating(
   });
 
   // Stage 4: Scoring & Weighting
+  // Iterate through all parameters defined in the model's weights
   Object.keys(model.weights).forEach((paramId) => {
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
@@ -180,7 +189,7 @@ export function runDynamicRating(
     transformedScores[paramId] = score;
     weightedScores[paramId] = score * (model.weights[paramId] / 100);
     
-    // Ensure actualValuesUsed has the most up-to-date value for the UI
+    // Final sync for UI display
     actualValuesUsed[paramId] = val;
   });
 
@@ -190,12 +199,6 @@ export function runDynamicRating(
   const mapping = scale.mapping.find(
     (m) => normalizedScore >= m.minScore && normalizedScore <= m.maxScore
   );
-
-  console.log('Analytical Execution Final Log:', { 
-    finalScore: normalizedScore, 
-    designation: mapping?.rating,
-    values: actualValuesUsed 
-  });
 
   return {
     transformedScores,

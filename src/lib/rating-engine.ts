@@ -89,7 +89,7 @@ export function scoreMetric(value: number, config: ModelTransformation): number 
 }
 
 /**
- * Executes the full rating calculation pipeline with hardcoded fallbacks for critical metrics.
+ * Executes the full rating calculation pipeline with robust mapping and hardcoded fallbacks.
  */
 export function runDynamicRating(
   valuesById: Record<string, number>,
@@ -102,32 +102,29 @@ export function runDynamicRating(
   const derivedMetrics: Record<string, number> = {};
   const actualValuesUsed: Record<string, number> = {};
   
+  // Context to hold values by SLUG for formulas and logic
   const context: Record<string, number> = {};
   
-  // Stage 1: Map all raw inputs to context by SLUG
+  // Stage 1: Map raw inputs to context by both ID and SLUG
   parameters.forEach(p => {
+    const val = valuesById[p.id] ?? 0;
+    context[p.slug] = val;
     if (p.type === 'raw') {
-      const val = valuesById[p.id] ?? valuesById[p.slug] ?? 0;
-      context[p.slug] = val;
       actualValuesUsed[p.id] = val;
     }
   });
 
-  // Helper to find parameter by multiple possible slug variations
-  const findParamBySlugs = (slugs: string[]) => {
-    return parameters.find(p => slugs.includes(p.slug));
-  };
-
-  // Stage 2: Hardcoded Logic for Critical Demo Metrics
+  // Stage 2: Hardcoded Calculation Layer for Demo Resilience
   const calculateHardcoded = (targetSlug: string, sourceSlugs: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
-    const p = findParamBySlugs([targetSlug]);
-    if (p && p.type === 'derived') {
-      // Build local context for the logic based on source slug variations
+    // Find any parameter that matches this slug (to get its ID)
+    const p = parameters.find(param => param.slug === targetSlug);
+    
+    if (p) {
       const localCtx: Record<string, number> = {};
       Object.entries(sourceSlugs).forEach(([key, variations]) => {
         let foundVal = 0;
         for (const v of variations) {
-          if (context[v] !== undefined) {
+          if (context[v] !== undefined && context[v] !== 0) {
             foundVal = context[v];
             break;
           }
@@ -137,37 +134,36 @@ export function runDynamicRating(
 
       const result = logic(localCtx);
       context[p.slug] = result;
-      derivedMetrics[p.id] = result;
       actualValuesUsed[p.id] = result;
+      derivedMetrics[p.id] = result;
     }
   };
 
   // Debt to GDP: (Debt / GDP) * 100
   calculateHardcoded('debt_to_gdp', 
-    { debt: ['debt', 'government_debt', 'total_debt'], gdp: ['gdp'] }, 
+    { debt: ['debt', 'government_debt', 'total_debt', 'govt_debt'], gdp: ['gdp'] }, 
     (c) => (c.debt / (c.gdp || 1)) * 100
   );
 
   // Reserve Cover: FX Reserves / Imports (Months)
   calculateHardcoded('reserve_cover', 
-    { res: ['fx_reserves', 'reserves'], imp: ['imports'] }, 
+    { res: ['fx_reserves', 'reserves', 'reserves_total'], imp: ['imports', 'total_imports'] }, 
     (c) => c.res / ((c.imp || 12) / 12)
   );
 
   // Interest to Revenue: (Interest / Revenue) * 100
   calculateHardcoded('interest_to_revenue', 
-    { int: ['interest', 'interest_payments'], rev: ['revenue', 'government_revenue'] }, 
+    { int: ['interest', 'interest_payments', 'debt_interest'], rev: ['revenue', 'government_revenue', 'total_revenue'] }, 
     (c) => (c.int / (c.rev || 1)) * 100
   );
 
-  // Stage 3: Formula Engine (Secondary Pass for remaining derived parameters)
-  const derivedParams = parameters.filter(p => p.type === 'derived' && p.formula);
-  derivedParams.forEach(p => {
-    if (!actualValuesUsed[p.id]) {
+  // Stage 3: Formula Pass (for any derived parameters not hardcoded)
+  parameters.filter(p => p.type === 'derived' && p.formula).forEach(p => {
+    if (actualValuesUsed[p.id] === undefined || actualValuesUsed[p.id] === 0) {
       const computedValue = evaluateFormula(p.formula!, context);
-      derivedMetrics[p.id] = computedValue;
       context[p.slug] = computedValue;
       actualValuesUsed[p.id] = computedValue;
+      derivedMetrics[p.id] = computedValue;
     }
   });
 
@@ -176,12 +172,16 @@ export function runDynamicRating(
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
 
-    const val = actualValuesUsed[paramId] ?? 0;
+    // Use calculated value if exists, otherwise fallback to context/input
+    const val = actualValuesUsed[paramId] ?? context[p.slug] ?? 0;
     const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
     
     const score = scoreMetric(val, trans);
     transformedScores[paramId] = score;
     weightedScores[paramId] = score * (model.weights[paramId] / 100);
+    
+    // Ensure actualValuesUsed has the most up-to-date value for the UI
+    actualValuesUsed[paramId] = val;
   });
 
   const rawFinalScore = Object.values(weightedScores).reduce((a, b) => a + b, 0);
@@ -191,7 +191,11 @@ export function runDynamicRating(
     (m) => normalizedScore >= m.minScore && normalizedScore <= m.maxScore
   );
 
-  console.log('Calculation Debug:', { context, actualValuesUsed, finalScore: normalizedScore });
+  console.log('Analytical Execution Final Log:', { 
+    finalScore: normalizedScore, 
+    designation: mapping?.rating,
+    values: actualValuesUsed 
+  });
 
   return {
     transformedScores,

@@ -33,7 +33,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
-// Sample data mapping for "Auto" sources
+// Simulated Enterprise Market Data (Mock IMF/World Bank Repository)
 const MOCK_AUTO_DATA: Record<string, Record<string, number>> = {
     "India": {
         "gdp": 3400,
@@ -42,18 +42,24 @@ const MOCK_AUTO_DATA: Record<string, Record<string, number>> = {
         "fx_reserves": 600,
         "debt": 85,
         "governance_score": 0.6,
-        "revenue": 580,
-        "interest": 120
+        "political_stability": 0.5,
+        "interest": 20,
+        "imports": 700,
+        "exports": 650,
+        "revenue": 580
     },
     "USA": {
         "gdp": 26000,
         "gdp_growth": 2.1,
         "inflation": 3.2,
-        "fx_reserves": 120,
-        "debt": 122,
+        "fx_reserves": 250,
+        "debt": 120,
         "governance_score": 0.9,
-        "revenue": 4900,
-        "interest": 660
+        "political_stability": 0.8,
+        "interest": 660,
+        "imports": 3500,
+        "exports": 2800,
+        "revenue": 4900
     },
     "Brazil": {
         "gdp": 1900,
@@ -62,8 +68,11 @@ const MOCK_AUTO_DATA: Record<string, Record<string, number>> = {
         "fx_reserves": 340,
         "debt": 75,
         "governance_score": 0.5,
-        "revenue": 320,
-        "interest": 95
+        "political_stability": 0.4,
+        "interest": 95,
+        "imports": 250,
+        "exports": 300,
+        "revenue": 320
     }
 }
 
@@ -133,13 +142,17 @@ export default function RatingExecutionPage() {
         if (!mockData) return;
 
         const newData = { ...currentData }
-        const filled = new Set<string>()
+        const filled = new Set<string>(autoFilledFields)
 
         params.forEach(p => {
             if (p.type === 'raw' && (p.dataSource === 'IMF (Auto)' || p.dataSource === 'World Bank (Auto)')) {
-                if (mockData[p.slug] !== undefined) {
-                    newData[p.id] = mockData[p.slug]
-                    filled.add(p.id)
+                const mockVal = mockData[p.slug];
+                if (mockVal !== undefined) {
+                    // Preserve manual input: only fill if field is empty (0, undefined, or null)
+                    if (currentData[p.id] === undefined || currentData[p.id] === 0 || currentData[p.id] === null) {
+                        newData[p.id] = mockVal
+                        filled.add(p.id)
+                    }
                 }
             }
         })
@@ -151,12 +164,16 @@ export default function RatingExecutionPage() {
     const handleFetchAuto = async () => {
         if (!country) return
         setIsFetchingAuto(true)
-        // Simulate network latency
-        await new Promise(r => setTimeout(r, 800))
+        console.log(`Auto-fetch executed for ${country.name}`);
+        
+        // Simulate network latency for realism
+        await new Promise(r => setTimeout(r, 1200))
+        
         applyAutoFill(country.name, parameters, factSheet)
+        
         toast({ 
             title: "Data Synchronized", 
-            description: `Automated parameters updated for ${country.name} using latest IMF/WB signals.` 
+            description: `Automated parameters updated for ${country.name} from IMF/WB mock repository.` 
         })
         setIsFetchingAuto(false)
     }
@@ -177,13 +194,20 @@ export default function RatingExecutionPage() {
         try {
             const suggested = await suggestFactSheetData({ countryName: country.name })
             const merged = { ...factSheet }
+            const filled = new Set(autoFilledFields)
+            
             parameters.forEach(p => {
                 if (p.type === 'raw' && (suggested as any)[p.slug] !== undefined) {
-                    merged[p.id] = (suggested as any)[p.slug]
+                    // AI suggestions also follow the "preserve manual" rule in this demo
+                    if (factSheet[p.id] === undefined || factSheet[p.id] === 0) {
+                        merged[p.id] = (suggested as any)[p.slug]
+                        filled.add(p.id)
+                    }
                 }
             })
             setFactSheet(merged)
-            toast({ title: "Data Suggested", description: "Economic indicators have been updated based on AI market data." })
+            setAutoFilledFields(filled)
+            toast({ title: "Data Suggested", description: "Economic indicators updated via GenAI market analysis." })
         } catch (e) {
             toast({ title: "AI Service Error", description: "Could not retrieve market data suggestions." })
         } finally {

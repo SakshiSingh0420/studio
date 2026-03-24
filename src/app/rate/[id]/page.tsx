@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from "react"
@@ -46,7 +47,9 @@ const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
         "imports": 740000000000,
         "exports": 680000000000,
         "revenue": 590000000000,
-        "external_debt": 620000000000
+        "external_debt": 620000000000,
+        "debt_to_gdp": 85.0,
+        "interest_to_revenue": 20.0
     },
     "USA": {
         "gdp": 27000000000000,
@@ -112,32 +115,34 @@ export default function RatingExecutionPage() {
                 ])
                 
                 const found = countriesData.find(c => c.id === id)
+                let initialFactSheet: FactSheetData = {}
+                let filled = new Set<string>()
+
                 if (found) {
                     setCountry(found)
                     const saved = await getFactSheet(found.id)
                     if (saved) {
-                        setFactSheet(saved)
+                        initialFactSheet = saved
                     } else {
                         // Attempt initial auto-fill if no existing fact sheet
                         const mockData = MOCK_MARKET_DATA[found.name]
                         if (mockData) {
-                            const newData: any = {}
-                            const filled = new Set<string>()
+                            console.log(`Auto Fetch: Initial load for ${found.name}`);
                             paramsData.forEach(p => {
                                 if (p.type === 'raw' && (p.dataSource === 'IMF (Auto)' || p.dataSource === 'World Bank (Auto)')) {
                                     const val = mockData[p.slug]
                                     if (val !== undefined) {
-                                        newData[p.id] = val
+                                        initialFactSheet[p.id] = val
                                         filled.add(p.id)
                                     }
                                 }
                             })
-                            setFactSheet(newData)
-                            setAutoFilledFields(filled)
                         }
                     }
                 }
                 
+                setFactSheet(initialFactSheet)
+                setAutoFilledFields(filled)
                 setModels(modelsData)
                 setScales(scalesData)
                 setParameters(paramsData)
@@ -160,10 +165,10 @@ export default function RatingExecutionPage() {
     const handleAutoFill = async () => {
         if (!country || !parameters.length) return
         setIsFetchingAuto(true)
-        console.log(`Auto-fetch synchronization triggered for ${country.name}`);
+        console.log(`Auto Fetch: Manual synchronization triggered for ${country.name}`);
         
         // Simulating data synchronization latency
-        await new Promise(r => setTimeout(r, 1000))
+        await new Promise(r => setTimeout(r, 800))
         
         const mockData = MOCK_MARKET_DATA[country.name]
         if (!mockData) {
@@ -181,11 +186,11 @@ export default function RatingExecutionPage() {
         let syncCount = 0
 
         parameters.forEach(p => {
-            // Only target parameters defined as Auto from IMF or World Bank
+            // Target parameters defined as Auto
             if (p.type === 'raw' && (p.dataSource === 'IMF (Auto)' || p.dataSource === 'World Bank (Auto)')) {
                 const val = mockData[p.slug]
                 if (val !== undefined) {
-                    // Safety check: Preserve manual entries unless they are zero or undefined
+                    // Safety check: Preserve manual entries (only fill if current value is 0 or undefined)
                     if (!factSheet[p.id] || factSheet[p.id] === 0) {
                         updatedFactSheet[p.id] = val
                         updatedFilled.add(p.id)
@@ -195,10 +200,10 @@ export default function RatingExecutionPage() {
             }
         })
 
-        // Bulk update state to ensure UI responsiveness
         setFactSheet(updatedFactSheet)
         setAutoFilledFields(updatedFilled)
         
+        console.log(`Auto Fetch: Synchronized ${syncCount} parameters for ${country.name}`);
         toast({ 
             title: "Data Synchronized", 
             description: `Successfully synchronized ${syncCount} automated parameters for ${country.name}.` 

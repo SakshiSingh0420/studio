@@ -32,7 +32,7 @@ import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
-// Enterprise Market Data Mock (Slugs mapped to standard parameter definitions)
+// Enterprise Market Data Mock (Standardized Slugs)
 const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
     "India": {
         "gdp": 3400000000000,
@@ -100,7 +100,6 @@ export default function RatingExecutionPage() {
     const [isGenerating, setIsGenerating] = useState(false)
     const [isFetchingAuto, setIsFetchingAuto] = useState(false)
     const [rationale, setRationale] = useState("")
-    const [adjustment, setAdjustment] = useState<number>(0)
     const [step, setStep] = useState<"input" | "calculate" | "review">("input")
     const [loading, setLoading] = useState(true)
 
@@ -134,7 +133,7 @@ export default function RatingExecutionPage() {
                                         filled.add(p.id)
                                     }
                                 }
-                            })
+                            }) 
                         }
                     }
                 }
@@ -148,33 +147,35 @@ export default function RatingExecutionPage() {
                 if (modelsData.length > 0) setSelectedModel(modelsData[0])
                 if (scalesData.length > 0) setSelectedScale(scalesData[0])
             } catch (error) {
-                console.error("Initialization error:", error)
+                console.error("Analytical Initialization Error:", error)
             } finally {
-                setLoading(false)
+                setLoading(false) 
             }
         }
         load()
     }, [id])
 
+    // Live calculation of derived ratios for UI feedback during data entry
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
-        const valuesBySlug: Record<string, number> = {};
+        const context: Record<string, number> = {}; 
         parameters.forEach(p => {
             if (p.type === 'raw') {
-                valuesBySlug[p.slug] = factSheet[p.id] || 0;
+                const rawVal = factSheet[p.id];
+                context[p.slug] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
             }
         });
         const results: Record<string, number> = {};
         const derived = parameters.filter(p => p.type === 'derived' && p.formula);
-        for (let pass = 0; pass < 2; pass++) {
+        for (let pass = 0; pass < 3; pass++) {
             derived.forEach(p => {
-                const val = evaluateFormula(p.formula!, valuesBySlug);
+                const val = evaluateFormula(p.formula!, context);
                 results[p.id] = val;
-                valuesBySlug[p.slug] = val;
+                context[p.slug] = val;
             });
         }
         return results;
-    }, [factSheet, parameters]);
+    }, [factSheet, parameters]); 
 
     const handleAutoFill = async () => {
         if (!country || !parameters.length) return
@@ -182,7 +183,7 @@ export default function RatingExecutionPage() {
         await new Promise(r => setTimeout(r, 600))
         const mockData = MOCK_MARKET_DATA[country.name]
         if (!mockData) {
-            toast({ title: "Source Unavailable", description: `No mock data for ${country.name}.`, variant: "destructive" })
+            toast({ title: "Source Unavailable", description: `No market profile exists for ${country.name}.`, variant: "destructive" })
             setIsFetchingAuto(false)
             return
         }
@@ -203,19 +204,23 @@ export default function RatingExecutionPage() {
             return next;
         })
         setAutoFilledFields(updatedFilled)
-        toast({ title: "Data Synchronized", description: `Updated ${syncCount} parameters for ${country.name}.` })
+        toast({ title: "Market Data Sync", description: `Synchronized ${syncCount} macroeconomic parameters.` })
         setIsFetchingAuto(false)
     }
 
     const handleRun = () => {
         if (!selectedModel || !selectedScale) return
+        
+        // Final verification of numeric inputs before pipeline execution
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
-            if (p.type === 'raw') {
-                numericInputs[p.id] = Number(factSheet[p.id]) || 0;
-            }
+            const rawVal = factSheet[p.id];
+            // Ensure strings are converted to numbers and handled safely
+            numericInputs[p.id] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
         });
-        const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters);
+
+        console.log("Analytical Engine - Execution started for:", country?.name);
+        const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
         setCalculation(result)
         setStep("calculate")
     }
@@ -238,9 +243,9 @@ export default function RatingExecutionPage() {
                 return next;
             });
             setAutoFilledFields(filled)
-            toast({ title: "AI Synthesis Complete", description: "Updated with market-derived AI suggestions." })
+            toast({ title: "AI Synthesis Complete", description: "Updated fact sheet with market-derived suggestions." })
         } catch (e) {
-            toast({ title: "AI Error", variant: "destructive", description: "Failed to fetch analytical suggestions." })
+            toast({ title: "AI Error", variant: "destructive", description: "Failed to synthesize analytical data." })
         } finally {
             setIsGenerating(false)
         }
@@ -263,7 +268,7 @@ export default function RatingExecutionPage() {
             })
             setRationale(res.rationale)
         } catch (e) {
-            toast({ title: "Rationale Error", variant: "destructive", description: "Failed to generate AI rationale." })
+            toast({ title: "Analytical Narrative Generation Error", variant: "destructive", description: "Failed to generate a rating narrative." })
         } finally {
             setIsGenerating(false)
         }
@@ -281,7 +286,7 @@ export default function RatingExecutionPage() {
             approvalStatus: 'pending',
             reason: rationale
         })
-        toast({ title: "Session Archived" })
+        toast({ title: "Rating Saved" })
         router.push('/')
     }
 
@@ -289,33 +294,33 @@ export default function RatingExecutionPage() {
 
     return (
         <div className="space-y-8">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"> 
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-primary">Execute Rating: {country?.name}</h1>
-                    <p className="text-muted-foreground mt-1 text-lg">Phase: <span className="capitalize text-foreground font-semibold">{step}</span></p>
+                    <p className="text-muted-foreground mt-1 text-lg">Current Stage: <span className="capitalize text-foreground font-semibold">{step}</span></p>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => router.back()}>Abort</Button>
                     {step === "input" && <Button onClick={handleRun} className="bg-primary"><Calculator className="w-4 h-4 mr-2" /> Run Analysis</Button>}
-                    {step === "calculate" && <Button onClick={() => setStep("review")} className="bg-primary">Continue Review <ChevronRight className="w-4 h-4 ml-2" /></Button>}
-                    {step === "review" && <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="w-4 h-4 mr-2" /> Finalize Decision</Button>}
+                    {step === "calculate" && <Button onClick={() => setStep("review")} className="bg-primary">Move to Review <ChevronRight className="w-4 h-4 ml-2" /></Button>}
+                    {step === "review" && <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="w-4 h-4 mr-2" /> Submit for Approval</Button>}
                 </div>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-12">
                 <div className="lg:col-span-3 space-y-6">
                     <Card>
-                        <CardHeader><CardTitle className="text-sm font-bold uppercase text-muted-foreground">Framework</CardTitle></CardHeader>
+                        <CardHeader><CardTitle className="text-xs font-bold uppercase text-muted-foreground">Framework Settings</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <label className="text-xs font-semibold">Model</label>
+                                <label className="text-xs font-semibold">Analytical Model</label>
                                 <Select onValueChange={(v) => setSelectedModel(models.find(m => m.id === v)!)} value={selectedModel?.id}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>{models.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-semibold">Scale</label>
+                                <label className="text-xs font-semibold">Target Rating Scale</label>
                                 <Select onValueChange={(v) => setSelectedScale(scales.find(s => s.id === v)!)} value={selectedScale?.id}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>{scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
@@ -329,13 +334,13 @@ export default function RatingExecutionPage() {
                     {step === "input" && (
                         <Card>
                             <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b pb-6">
-                                <div><CardTitle>Fact Sheet</CardTitle></div>
+                                <div><CardTitle>Country Fact Sheet</CardTitle></div>
                                 <div className="flex gap-2">
                                     <Button size="sm" variant="outline" onClick={handleAutoFill} disabled={isFetchingAuto}>
-                                        <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isFetchingAuto && "animate-spin")} /> Auto Fetch
+                                        <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isFetchingAuto && "animate-spin")} /> Market Data Sync
                                     </Button>
                                     <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating}>
-                                        <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500" /> AI Suggest
+                                        <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500" /> GenAI Synthesis
                                     </Button>
                                 </div>
                             </CardHeader>
@@ -351,8 +356,8 @@ export default function RatingExecutionPage() {
                                                 <Input 
                                                     type="number" 
                                                     value={factSheet[p.id] ?? ""} 
-                                                    onChange={e => setFactSheet({...factSheet, [p.id]: Number(e.target.value)})} 
-                                                    className={cn(autoFilledFields.has(p.id) && "bg-green-50/40 border-green-200")}
+                                                    onChange={e => setFactSheet({...factSheet, [p.id]: e.target.value === "" ? "" : Number(e.target.value)})} 
+                                                    className={cn(autoFilledFields.has(p.id) && "bg-green-50/40 border-green-200")} 
                                                 />
                                                 {autoFilledFields.has(p.id) && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-green-600 font-black">AUTO</span>}
                                             </div>
@@ -360,7 +365,7 @@ export default function RatingExecutionPage() {
                                     ))}
                                 </div>
                                 <div className="mt-12 pt-8 border-t">
-                                    <h3 className="text-sm font-bold mb-6">Derived Ratios</h3>
+                                    <h3 className="text-sm font-bold mb-6">Calculated Ratios & Logic</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {parameters.filter(p => p.type === 'derived').map(p => (
                                             <div key={p.id} className="p-4 bg-muted/10 rounded-lg border flex justify-between items-center">
@@ -369,7 +374,7 @@ export default function RatingExecutionPage() {
                                                     <p className="text-[10px] text-muted-foreground font-mono">{p.formula}</p>
                                                 </div>
                                                 <div className="text-right">
-                                                    <p className="text-sm font-black text-primary font-mono">{(liveDerivedMetrics[p.id] ?? 0).toLocaleString()}</p>
+                                                    <p className="text-sm font-black text-primary font-mono">{(liveDerivedMetrics[p.id] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
                                                 </div>
                                             </div>
                                         ))}
@@ -381,17 +386,25 @@ export default function RatingExecutionPage() {
 
                     {step === "calculate" && calculation && (
                         <Card>
-                            <CardHeader><CardTitle>Analytical Breakdown</CardTitle></CardHeader>
+                            <CardHeader><CardTitle>Quantitative Scoring Breakdown</CardTitle></CardHeader>
                             <CardContent>
                                 <Table className="border rounded-xl">
-                                    <TableHeader><TableRow><TableHead>Factor</TableHead><TableHead>Value</TableHead><TableHead>Score</TableHead><TableHead>Weight</TableHead><TableHead className="text-right">Impact</TableHead></TableRow></TableHeader>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Analytical Factor</TableHead>
+                                            <TableHead>Final Value</TableHead>
+                                            <TableHead>Trans. Score</TableHead>
+                                            <TableHead>Pillar Weight</TableHead>
+                                            <TableHead className="text-right">Weighted Impact</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
                                     <TableBody>
                                         {Object.keys(selectedModel?.weights || {}).map((pid) => {
                                             const p = parameters.find(param => param.id === pid)
                                             return (
                                                 <TableRow key={pid}>
                                                     <TableCell><span className="font-bold text-sm">{p?.name || pid}</span></TableCell>
-                                                    <TableCell className="font-mono">{(calculation.actualValuesUsed[pid] ?? 0).toLocaleString()}</TableCell>
+                                                    <TableCell className="font-mono">{(calculation.actualValuesUsed[pid] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
                                                     <TableCell className="font-extrabold text-primary">{calculation.transformedScores[pid]}</TableCell>
                                                     <TableCell>{selectedModel?.weights[pid]}%</TableCell>
                                                     <TableCell className="text-right font-mono font-black">{(calculation.weightedScores[pid] || 0).toFixed(3)}</TableCell>
@@ -402,11 +415,11 @@ export default function RatingExecutionPage() {
                                 </Table>
                                 <div className="mt-8 grid grid-cols-2 gap-6">
                                     <div className="bg-primary text-white p-8 rounded-2xl">
-                                        <p className="text-[10px] font-black uppercase opacity-80">Aggregate Score</p>
+                                        <p className="text-[10px] font-black uppercase opacity-80">Aggregate Risk Score</p>
                                         <div className="text-6xl font-black">{calculation.finalScore.toFixed(1)}%</div>
                                     </div>
                                     <div className="bg-white p-8 rounded-2xl border-4 border-primary/10">
-                                        <p className="text-[10px] font-black uppercase text-primary opacity-80">Implied Rating</p>
+                                        <p className="text-[10px] font-black uppercase text-primary opacity-80">Implied Credit Designation</p>
                                         <div className="text-6xl font-black text-primary">{calculation.initialRating}</div>
                                     </div>
                                 </div>
@@ -417,9 +430,9 @@ export default function RatingExecutionPage() {
                     {step === "review" && calculation && (
                         <div className="grid gap-6 md:grid-cols-2">
                             <Card className="border-t-4 border-t-primary">
-                                <CardHeader><CardTitle>AI Rationale</CardTitle></CardHeader>
+                                <CardHeader><CardTitle>AI Analytical Narrative</CardTitle></CardHeader>
                                 <CardContent className="min-h-[300px]">
-                                    {isGenerating ? <div className="flex flex-col items-center justify-center h-full"><Loader2 className="animate-spin" /></div> : rationale ? <p className="text-sm whitespace-pre-wrap">{rationale}</p> : <Button onClick={handleGenerateRationale}>Generate AI Narrative</Button>}
+                                    {isGenerating ? <div className="flex flex-col items-center justify-center h-full"><Loader2 className="animate-spin" /></div> : rationale ? <p className="text-sm whitespace-pre-wrap">{rationale}</p> : <Button onClick={handleGenerateRationale}>Generate Rating Rationale</Button>}
                                 </CardContent>
                             </Card>
                         </div>

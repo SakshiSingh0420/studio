@@ -1,3 +1,5 @@
+'use client';
+
 export type Parameter = {
   id: string;
   slug: string; // Internal key for formulas
@@ -39,39 +41,41 @@ export type FactSheetData = Record<string, any>;
 
 /**
  * Evaluates a formula using parameter slugs as variables.
+ * Enhanced for robustness: case-insensitive and handles snake_case slugs.
  */
 export function evaluateFormula(formula: string, valuesBySlug: Record<string, number>): number {
   try {
     if (!formula) return 0;
 
-    // 1. Replace parameter slugs with their values
-    // Sort by length descending to prevent partial replacements (e.g., 'gdp_growth' before 'gdp')
-    const sortedSlugs = Object.keys(valuesBySlug).sort((a, b) => b.length - a.length);
+    // 1. Prepare expression
     let expression = formula.toLowerCase();
+    
+    // 2. Sort slugs by length descending to prevent partial replacements (e.g. gdp_growth before gdp)
+    const sortedSlugs = Object.keys(valuesBySlug).sort((a, b) => b.length - a.length);
     
     for (const slug of sortedSlugs) {
       const val = valuesBySlug[slug] ?? 0;
-      // Match slug as a whole word to avoid replacing parts of other slugs
+      // Match slug as a whole word to avoid nested replacement errors
       const regex = new RegExp(`\\b${slug.toLowerCase()}\\b`, 'g');
       expression = expression.replace(regex, val.toString());
     }
 
-    // 2. Sanitation - allow numbers, operators, dots, spaces, and parentheses.
-    // Replace valid math symbols to check for remaining letters (invalid slugs)
+    // 3. Sanitation - allow numbers, operators, dots, spaces, and parentheses.
+    // Replace valid math parts to see if any letters (unknown slugs) remain
     const remainingAlpha = expression.replace(/[0-9.+\-*/()\s]/g, '');
     if (/[a-z]/i.test(remainingAlpha)) {
-      console.warn(`Formula evaluation failed: Unresolved slugs in expression "${expression}"`);
+      console.warn(`Analytical Engine: Unresolved identifiers in formula "${expression}"`);
       return 0;
     }
 
-    // 3. Evaluate result safely
+    // 4. Safe evaluation
     // eslint-disable-next-line no-new-func
     const result = new Function(`return ${expression}`)();
     
     if (typeof result !== 'number' || !isFinite(result)) return 0;
     return result;
   } catch (e) {
-    console.error("Formula Evaluation Error:", e);
+    console.error("Analytical Engine: Formula evaluation error:", e);
     return 0;
   }
 }
@@ -96,6 +100,10 @@ export function scoreMetric(value: number, config: ModelTransformation): number 
   return 1;
 }
 
+/**
+ * Executes the full rating calculation pipeline.
+ * Implements robust parameter matching (ID -> Slug -> Name) for demo reliability.
+ */
 export function runDynamicRating(
   valuesById: Record<string, number>,
   model: RatingModel,
@@ -107,34 +115,41 @@ export function runDynamicRating(
   const derivedMetrics: Record<string, number> = {};
   const actualValuesUsed: Record<string, number> = {};
   
-  // Build a context map using SLUGS for formula evaluation
-  const valuesBySlug: Record<string, number> = {};
+  // Context for formula evaluation (keyed by slug)
+  const context: Record<string, number> = {};
+  
+  // Stage 1: Build context from raw inputs
   parameters.forEach(p => {
     if (p.type === 'raw') {
-      const val = valuesById[p.id] ?? 0;
-      valuesBySlug[p.slug] = val;
-      actualValuesUsed[p.id] = val;
+      // Robust lookup chain for Demo reliability
+      let val = valuesById[p.id];
+      if (val === undefined) val = valuesById[p.slug];
+      if (val === undefined) val = valuesById[p.name];
+      
+      const finalVal = val ?? 0;
+      context[p.slug] = finalVal;
+      actualValuesUsed[p.id] = finalVal;
     }
   });
 
-  // 1. Calculate derived parameters using slugs (Step 1 of pipeline)
+  // Stage 2: Calculate derived parameters (Step 1 of pipeline)
   const derivedParams = parameters.filter(p => p.type === 'derived' && p.formula);
-  
-  // Two passes to handle basic dependency chaining (e.g., param C depends on B which depends on A)
-  for (let i = 0; i < 2; i++) {
+  // Three passes to handle multi-level dependency chains
+  for (let i = 0; i < 3; i++) {
     derivedParams.forEach(p => {
-      const computedValue = evaluateFormula(p.formula!, valuesBySlug);
+      const computedValue = evaluateFormula(p.formula!, context);
       derivedMetrics[p.id] = computedValue;
-      valuesBySlug[p.slug] = computedValue;
+      context[p.slug] = computedValue;
       actualValuesUsed[p.id] = computedValue;
     });
   }
 
-  // 2. Score metrics using the ID-based model weights (Step 2 of pipeline)
+  // Stage 3: Scoring & Weighting
   Object.keys(model.weights).forEach((paramId) => {
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
 
+    // Use resolved value from context (includes derived results)
     const val = actualValuesUsed[paramId] ?? 0;
     const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
     
@@ -144,8 +159,10 @@ export function runDynamicRating(
   });
 
   const rawFinalScore = Object.values(weightedScores).reduce((a, b) => a + b, 0);
+  // Normalize aggregate score to 0-100 range
   const normalizedScore = (rawFinalScore / 5) * 100;
 
+  // Final stage: Label mapping
   const mapping = scale.mapping.find(
     (m) => normalizedScore >= m.minScore && normalizedScore <= m.maxScore
   );

@@ -54,10 +54,37 @@ export const getCountries = () => getAll<Country>('countries');
 export const addCountry = (c: any) => addDoc(collection(db, 'countries'), c);
 
 // RATINGS
+export interface Rating {
+  id: string;
+  countryId: string;
+  modelId: string;
+  scaleId: string;
+  finalScore: number;
+  initialRating: string;
+  adjustedRating?: string;
+  overrideRating?: string;
+  approvalStatus: 'pending' | 'approved' | 'rejected';
+  reason?: string;
+  committeeComments?: string;
+  createdAt: any;
+  isSandbox?: boolean;
+}
+
 export const saveRating = (r: any) => addDoc(collection(db, 'ratings'), { ...r, createdAt: serverTimestamp() });
+
 export const getRatingHistory = (countryId: string) => {
   const q = query(collection(db, 'ratings'), where('countryId', '==', countryId), orderBy('createdAt', 'desc'));
-  return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
+  return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() } as Rating)));
+};
+
+export const updateRatingStatus = async (id: string, status: 'approved' | 'rejected', approvedBy?: string, reason?: string) => {
+  const docRef = doc(db, 'ratings', id);
+  return updateDoc(docRef, {
+    approvalStatus: status,
+    approvedBy: approvedBy || 'system',
+    committeeComments: reason || '',
+    updatedAt: serverTimestamp()
+  });
 };
 
 // FACT SHEETS

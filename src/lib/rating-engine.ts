@@ -47,20 +47,20 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
     // 1. Replace parameter slugs with their values
     // Sort by length descending to prevent partial replacements (e.g., 'gdp_growth' before 'gdp')
     const sortedSlugs = Object.keys(valuesBySlug).sort((a, b) => b.length - a.length);
-    let expression = formula;
+    let expression = formula.toLowerCase();
     
     for (const slug of sortedSlugs) {
       const val = valuesBySlug[slug] ?? 0;
       // Match slug as a whole word to avoid replacing parts of other slugs
-      const regex = new RegExp(`\\b${slug}\\b`, 'g');
+      const regex = new RegExp(`\\b${slug.toLowerCase()}\\b`, 'g');
       expression = expression.replace(regex, val.toString());
     }
 
-    // 2. Sanitation - check for remaining unreplaced slugs (letters)
-    // We allow numbers, operators, dots, spaces, and parentheses.
+    // 2. Sanitation - allow numbers, operators, dots, spaces, and parentheses.
+    // Replace valid math symbols to check for remaining letters (invalid slugs)
     const remainingAlpha = expression.replace(/[0-9.+\-*/()\s]/g, '');
-    if (remainingAlpha.length > 0) {
-      // If alphabetical characters remain, it means some slugs weren't found in context
+    if (/[a-z]/i.test(remainingAlpha)) {
+      console.warn(`Formula evaluation failed: Unresolved slugs in expression "${expression}"`);
       return 0;
     }
 
@@ -71,26 +71,29 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
     if (typeof result !== 'number' || !isFinite(result)) return 0;
     return result;
   } catch (e) {
-    // Fail silently during live typing to prevent UI crashes
+    console.error("Formula Evaluation Error:", e);
     return 0;
   }
 }
 
 export function scoreMetric(value: number, config: ModelTransformation): number {
   const { thresholds, inverse } = config;
-  if (inverse) {
-    if (value <= thresholds[0]) return 5;
-    if (value <= thresholds[1]) return 4;
-    if (value <= thresholds[2]) return 3;
-    if (value <= thresholds[3]) return 2;
-    return 1;
-  } else {
+  
+  // Standard logic: higher is better (e.g., GDP Growth)
+  if (!inverse) {
     if (value >= thresholds[3]) return 5;
     if (value >= thresholds[2]) return 4;
     if (value >= thresholds[1]) return 3;
     if (value >= thresholds[0]) return 2;
     return 1;
-  }
+  } 
+  
+  // Inverse logic: lower is better (e.g., Debt)
+  if (value <= thresholds[0]) return 5;
+  if (value <= thresholds[1]) return 4;
+  if (value <= thresholds[2]) return 3;
+  if (value <= thresholds[3]) return 2;
+  return 1;
 }
 
 export function runDynamicRating(
@@ -102,34 +105,37 @@ export function runDynamicRating(
   const weightedScores: Record<string, number> = {};
   const transformedScores: Record<string, number> = {};
   const derivedMetrics: Record<string, number> = {};
+  const actualValuesUsed: Record<string, number> = {};
   
   // Build a context map using SLUGS for formula evaluation
   const valuesBySlug: Record<string, number> = {};
   parameters.forEach(p => {
     if (p.type === 'raw') {
-      valuesBySlug[p.slug] = valuesById[p.id] || 0;
+      const val = valuesById[p.id] ?? 0;
+      valuesBySlug[p.slug] = val;
+      actualValuesUsed[p.id] = val;
     }
   });
 
-  // 1. Calculate derived parameters using slugs
+  // 1. Calculate derived parameters using slugs (Step 1 of pipeline)
   const derivedParams = parameters.filter(p => p.type === 'derived' && p.formula);
   
-  // Chained derivation: allow derived parameters to depend on others
-  // We run multiple passes to ensure dependencies are resolved (simple for MVP)
+  // Two passes to handle basic dependency chaining (e.g., param C depends on B which depends on A)
   for (let i = 0; i < 2; i++) {
     derivedParams.forEach(p => {
       const computedValue = evaluateFormula(p.formula!, valuesBySlug);
       derivedMetrics[p.id] = computedValue;
       valuesBySlug[p.slug] = computedValue;
+      actualValuesUsed[p.id] = computedValue;
     });
   }
 
-  // 2. Score metrics using the ID-based model weights
+  // 2. Score metrics using the ID-based model weights (Step 2 of pipeline)
   Object.keys(model.weights).forEach((paramId) => {
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
 
-    const val = p.type === 'derived' ? derivedMetrics[paramId] : valuesById[paramId] || 0;
+    const val = actualValuesUsed[paramId] ?? 0;
     const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
     
     const score = scoreMetric(val, trans);
@@ -149,6 +155,7 @@ export function runDynamicRating(
     weightedScores,
     finalScore: normalizedScore,
     initialRating: mapping?.rating || "NR",
-    derivedMetrics 
+    derivedMetrics,
+    actualValuesUsed
   };
 }

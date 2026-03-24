@@ -47,8 +47,6 @@ const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
         "exports": 680000000000,
         "revenue": 590000000000,
         "external_debt": 620000000000,
-        "debt_to_gdp": 85.0,
-        "interest_to_revenue": 20.0
     },
     "USA": {
         "gdp": 27000000000000,
@@ -155,7 +153,7 @@ export default function RatingExecutionPage() {
         load()
     }, [id])
 
-    // Live Calculation of Derived Parameters
+    // Live Calculation of Derived Parameters for Step 1
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
@@ -169,12 +167,11 @@ export default function RatingExecutionPage() {
         const results: Record<string, number> = {};
         const derived = parameters.filter(p => p.type === 'derived' && p.formula);
         
-        // Multi-pass to handle simple chaining
         for (let pass = 0; pass < 2; pass++) {
             derived.forEach(p => {
                 const val = evaluateFormula(p.formula!, valuesBySlug);
                 results[p.id] = val;
-                valuesBySlug[p.slug] = val; // Feed back into context for chaining
+                valuesBySlug[p.slug] = val;
             });
         }
         
@@ -233,7 +230,19 @@ export default function RatingExecutionPage() {
             toast({ title: "Configuration Error", description: "Please select a model and scale." })
             return
         }
-        const result = runDynamicRating(factSheet as Record<string, number>, selectedModel, selectedScale, parameters)
+        
+        // Final numeric values for the engine
+        const numericInputs: Record<string, number> = {};
+        parameters.forEach(p => {
+            if (p.type === 'raw') {
+                numericInputs[p.id] = Number(factSheet[p.id]) || 0;
+            }
+        });
+
+        console.log("Running Rating Engine with Inputs:", numericInputs);
+        const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters);
+        console.log("Rating Engine Result:", result);
+
         setCalculation(result)
         setStep("calculate")
     }
@@ -499,24 +508,30 @@ export default function RatingExecutionPage() {
                                         <TableBody>
                                             {Object.keys(selectedModel.weights).map((pid) => {
                                                 const p = parameters.find(param => param.id === pid)
-                                                const isDerived = p?.type === 'derived';
-                                                const val = isDerived ? calculation.derivedMetrics[pid] : factSheet[pid];
+                                                const val = calculation.actualValuesUsed[pid] ?? 0;
+                                                const score = calculation.transformedScores[pid] ?? 1;
+                                                const weight = selectedModel.weights[pid] ?? 0;
+                                                const impact = calculation.weightedScores[pid] ?? 0;
                                                 
                                                 return (
                                                     <TableRow key={pid} className="hover:bg-muted/20">
                                                         <TableCell>
                                                             <div className="flex flex-col">
                                                                 <span className="font-bold text-sm">{p?.name || pid}</span>
-                                                                <span className="text-[9px] text-muted-foreground font-mono uppercase">{isDerived ? `Formula: ${p?.formula}` : p?.slug}</span>
+                                                                <span className="text-[9px] text-muted-foreground font-mono uppercase">
+                                                                    {p?.type === 'derived' ? `Formula: ${p?.formula}` : p?.slug}
+                                                                </span>
                                                             </div>
                                                         </TableCell>
-                                                        <TableCell className={cn("font-mono", isDerived && "text-primary font-black")}>
-                                                            {typeof val === 'number' ? val.toLocaleString(undefined, { maximumFractionDigits: 2 }) : (val || 0)}
+                                                        <TableCell className={cn("font-mono", p?.type === 'derived' && "text-primary font-black")}>
+                                                            {typeof val === 'number' ? val.toLocaleString(undefined, { maximumFractionDigits: 2 }) : val}
                                                         </TableCell>
-                                                        <TableCell className="text-center font-extrabold text-primary">{calculation.transformedScores[pid]}</TableCell>
-                                                        <TableCell className="text-muted-foreground">{selectedModel.weights[pid]}%</TableCell>
+                                                        <TableCell className="text-center font-extrabold text-primary">
+                                                            {score}
+                                                        </TableCell>
+                                                        <TableCell className="text-muted-foreground">{weight}%</TableCell>
                                                         <TableCell className="text-right font-mono font-black bg-muted/10">
-                                                            {calculation.weightedScores[pid].toFixed(3)}
+                                                            {impact.toFixed(3)}
                                                         </TableCell>
                                                     </TableRow>
                                                 )

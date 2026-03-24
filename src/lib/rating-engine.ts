@@ -173,13 +173,13 @@ export function runDynamicRating(
     (c) => (c.debt / (c.gdp || 1)) * 100
   );
 
-  // Reserve Cover
-  runHardcoded(['reserve_cover', 'fx_reserve_months', 'reserves_to_imports'], 
+  // Reserve Cover (Direct: FX Reserves / Imports)
+  runHardcoded(['reserve_cover', 'fx_reserve_months', 'reserves_to_imports', 'reserve_ratio'], 
     { 
         res: ['fx_reserves', 'reserves', 'foreign_exchange_reserves'], 
         imp: ['imports', 'total_imports'] 
     }, 
-    (c) => c.res / ((c.imp || 12) / 12)
+    (c) => c.imp === 0 ? 0 : (c.res / c.imp)
   );
 
   // 3. Run Formula Pass for other derived parameters

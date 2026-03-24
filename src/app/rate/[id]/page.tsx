@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -27,10 +26,11 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2, Info, RefreshCw, Database } from "lucide-react"
+import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2, Info, RefreshCw, Database, Settings2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -112,11 +112,20 @@ export default function RatingExecutionPage() {
             const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
             const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             
+            // Failsafe 1: Debt to GDP
             if (slug === 'debt_to_gdp' || name === 'debt_to_gdp') {
                 const debt = context['government_debt'] || context['debt'] || context['total_government_debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || context['gross_domestic_product'] || 1;
                 results[p.id] = (debt / gdp) * 100;
-            } else if (p.formula) {
+            } 
+            // Failsafe 2: Reserve Cover
+            else if (slug === 'reserve_cover' || name === 'reserve_cover') {
+                const res = context['fx_reserves'] || context['reserves'] || context['foreign_exchange_reserves'] || 0;
+                const imp = context['imports'] || context['total_imports'] || 0;
+                results[p.id] = imp === 0 ? 0 : (res / imp);
+            }
+            // General Formula Pass
+            else if (p.formula) {
                 results[p.id] = evaluateFormula(p.formula, context);
             }
         });
@@ -208,14 +217,14 @@ export default function RatingExecutionPage() {
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-900 uppercase">Model</label>
                                 <Select onValueChange={(v) => setSelectedModel(models.find(m => m.id === v)!)} value={selectedModel?.id}>
-                                    <SelectTrigger className="font-medium"><SelectValue /></SelectTrigger>
+                                    <SelectTrigger className="font-medium h-11"><SelectValue /></SelectTrigger>
                                     <SelectContent>{models.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-900 uppercase">Scale</label>
                                 <Select onValueChange={(v) => setSelectedScale(scales.find(s => s.id === v)!)} value={selectedScale?.id}>
-                                    <SelectTrigger className="font-medium"><SelectValue /></SelectTrigger>
+                                    <SelectTrigger className="font-medium h-11"><SelectValue /></SelectTrigger>
                                     <SelectContent>{scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
@@ -225,22 +234,22 @@ export default function RatingExecutionPage() {
 
                 <div className="lg:col-span-9">
                     {step === "input" && (
-                        <div className="space-y-8">
+                        <div className="space-y-12">
                             <Card className="border-2 shadow-sm overflow-hidden">
-                                <CardHeader className="flex flex-row items-center justify-between bg-white border-b py-6 px-8">
+                                <CardHeader className="flex flex-row items-center justify-between bg-white border-b py-8 px-10">
                                     <div>
                                         <CardTitle className="text-2xl font-black text-slate-900">Country Fact Sheet</CardTitle>
-                                        <CardDescription className="text-slate-500 font-medium">Capture raw macroeconomic and fiscal variables.</CardDescription>
+                                        <CardDescription className="text-slate-500 font-medium text-sm">Capture raw macroeconomic and fiscal variables.</CardDescription>
                                     </div>
-                                    <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating} className="border-2 font-bold hover:bg-slate-50 transition-colors">
+                                    <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating} className="border-2 font-bold h-10 px-6 hover:bg-slate-50 transition-colors">
                                         <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500 fill-yellow-500" /> GenAI Synthesis
                                     </Button>
                                 </CardHeader>
-                                <CardContent className="p-8">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+                                <CardContent className="p-10">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-8">
                                         {parameters.filter(p => p.type === 'raw').map((p) => (
-                                            <div key={p.id} className="space-y-2">
-                                                <label className="text-xs font-black text-slate-800 uppercase tracking-tighter flex justify-between">
+                                            <div key={p.id} className="space-y-3">
+                                                <label className="text-sm font-black text-slate-900 uppercase tracking-tight flex justify-between">
                                                     {p.name}
                                                 </label>
                                                 <div className="relative group">
@@ -249,11 +258,11 @@ export default function RatingExecutionPage() {
                                                         value={factSheet[p.id] ?? ""} 
                                                         onChange={e => setFactSheet({...factSheet, [p.id]: e.target.value === "" ? "" : Number(e.target.value)})} 
                                                         className={cn(
-                                                            "h-11 font-bold text-slate-900 transition-all border-2",
-                                                            autoFilledFields.has(p.id) ? "bg-green-50/50 border-green-200 focus:border-green-400" : "focus:border-primary"
+                                                            "h-12 text-lg font-bold text-slate-900 transition-all border-2",
+                                                            autoFilledFields.has(p.id) ? "bg-green-50/50 border-green-200 focus:border-green-400" : "focus:border-primary border-slate-200"
                                                         )} 
                                                     />
-                                                    {autoFilledFields.has(p.id) && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-green-600 font-black bg-green-100 px-1.5 py-0.5 rounded">AI</span>}
+                                                    {autoFilledFields.has(p.id) && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-green-700 font-black bg-green-100 px-2 py-1 rounded">AI DATA</span>}
                                                 </div>
                                             </div>
                                         ))}
@@ -261,25 +270,31 @@ export default function RatingExecutionPage() {
                                 </CardContent>
                             </Card>
 
-                            <div className="space-y-6">
-                                <div className="flex items-center gap-3">
-                                    <h2 className="text-xl font-black text-slate-900">Live Analytical Ratios</h2>
-                                    <div className="h-px bg-slate-200 flex-1" />
+                            <div className="space-y-8">
+                                <div className="flex items-center gap-4">
+                                    <h2 className="text-2xl font-black text-slate-900">Live Analytical Ratios</h2>
+                                    <div className="h-0.5 bg-slate-200 flex-1" />
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {parameters.filter(p => p.type === 'derived').map(p => (
-                                        <div key={p.id} className="p-5 bg-white rounded-xl border-2 border-slate-100 shadow-sm flex justify-between items-start transition-all hover:border-primary/20 hover:shadow-md group">
-                                            <div className="space-y-1.5">
-                                                <p className="text-sm font-black text-slate-900 group-hover:text-primary transition-colors">{p.name}</p>
-                                                {p.formula && (
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
-                                                        <span className="text-slate-500 italic">Formula:</span> <span className="font-mono text-slate-600">{p.formula}</span>
+                                        <div key={p.id} className="p-6 bg-white rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between transition-all hover:border-primary/30 hover:shadow-md group">
+                                            <div className="space-y-3">
+                                                <div className="flex justify-between items-start">
+                                                    <p className="text-base font-black text-slate-900 group-hover:text-primary transition-colors">{p.name}</p>
+                                                    <Settings2 className="w-4 h-4 text-slate-300 group-hover:text-primary transition-colors" />
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-3xl font-black text-primary leading-none tracking-tighter">
+                                                        {(liveDerivedMetrics[p.id] ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </p>
-                                                )}
+                                                </div>
                                             </div>
-                                            <div className="text-right">
-                                                <p className="text-xl font-black text-primary leading-none tracking-tighter">
-                                                    {(liveDerivedMetrics[p.id] ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            <div className="mt-6 pt-4 border-t border-slate-50">
+                                                <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+                                                    <span className="text-slate-400 italic font-medium">Formula:</span> 
+                                                    <span className="font-mono text-slate-700 bg-slate-50 px-2 py-0.5 rounded">
+                                                        {p.slug === 'reserve_cover' ? 'fx_reserves / imports' : (p.formula || 'Custom Logic')}
+                                                    </span>
                                                 </p>
                                             </div>
                                         </div>
@@ -291,7 +306,7 @@ export default function RatingExecutionPage() {
 
                     {step === "calculate" && calculation && (
                         <Card className="border-2 shadow-sm">
-                            <CardHeader className="border-b bg-slate-50/50">
+                            <CardHeader className="border-b bg-slate-50/50 py-8 px-10">
                                 <CardTitle className="text-2xl font-black text-slate-900">Quantitative Scoring Breakdown</CardTitle>
                                 <CardDescription className="text-slate-500 font-medium">Scoring results mapped to analytical pillar weights.</CardDescription>
                             </CardHeader>
@@ -299,11 +314,11 @@ export default function RatingExecutionPage() {
                                 <Table className="border-b">
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>
-                                            <TableHead className="font-black text-slate-900 uppercase text-[10px]">Analytical Parameter</TableHead>
-                                            <TableHead className="font-black text-slate-900 uppercase text-[10px]">Final Value</TableHead>
-                                            <TableHead className="font-black text-slate-900 uppercase text-[10px]">Trans. Score</TableHead>
-                                            <TableHead className="font-black text-slate-900 uppercase text-[10px]">Weight</TableHead>
-                                            <TableHead className="text-right font-black text-slate-900 uppercase text-[10px]">Impact</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-[11px] py-4 px-10">Analytical Parameter</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-[11px] py-4">Final Value</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-[11px] py-4">Trans. Score</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-[11px] py-4">Weight</TableHead>
+                                            <TableHead className="text-right font-black text-slate-900 uppercase text-[11px] py-4 px-10">Impact</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -312,26 +327,26 @@ export default function RatingExecutionPage() {
                                             const val = calculation.actualValuesUsed[pid] ?? 0;
                                             return (
                                                 <TableRow key={pid} className="hover:bg-slate-50/50 transition-colors">
-                                                    <TableCell className="font-bold text-slate-900">{p?.name || pid}</TableCell>
-                                                    <TableCell className="font-black text-primary">
-                                                        {val.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                    <TableCell className="font-bold text-slate-900 px-10 py-5">{p?.name || pid}</TableCell>
+                                                    <TableCell className="font-black text-primary text-base">
+                                                        {val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </TableCell>
                                                     <TableCell className="font-bold text-slate-700">{calculation.transformedScores[pid]}</TableCell>
                                                     <TableCell className="text-slate-500 font-medium">{selectedModel?.weights[pid]}%</TableCell>
-                                                    <TableCell className="text-right font-black text-slate-900">{(calculation.weightedScores[pid] || 0).toFixed(3)}</TableCell>
+                                                    <TableCell className="text-right font-black text-slate-900 px-10">{(calculation.weightedScores[pid] || 0).toFixed(3)}</TableCell>
                                                 </TableRow>
                                             )
                                         })}
                                     </TableBody>
                                 </Table>
-                                <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8 bg-white">
-                                    <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-xl flex flex-col justify-between">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Aggregate Risk Score</p>
-                                        <div className="text-6xl font-black tracking-tighter mt-2">{calculation.finalScore.toFixed(1)}%</div>
+                                <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-10 bg-white">
+                                    <div className="bg-slate-900 text-white p-10 rounded-3xl shadow-xl flex flex-col justify-between border-b-8 border-slate-700">
+                                        <p className="text-[11px] font-black uppercase tracking-[0.2em] opacity-60">Aggregate Risk Score</p>
+                                        <div className="text-7xl font-black tracking-tighter mt-4">{calculation.finalScore.toFixed(1)}%</div>
                                     </div>
-                                    <div className="bg-primary text-white p-8 rounded-2xl shadow-xl flex flex-col justify-between border-4 border-white/20">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Implied Rating</p>
-                                        <div className="text-6xl font-black tracking-tighter mt-2">{calculation.initialRating}</div>
+                                    <div className="bg-primary text-white p-10 rounded-3xl shadow-xl flex flex-col justify-between border-4 border-white/20 border-b-8 border-primary-foreground/30">
+                                        <p className="text-[11px] font-black uppercase tracking-[0.2em] opacity-60">Implied Rating</p>
+                                        <div className="text-7xl font-black tracking-tighter mt-4">{calculation.initialRating}</div>
                                     </div>
                                 </div>
                             </CardContent>
@@ -342,4 +357,3 @@ export default function RatingExecutionPage() {
         </div>
     )
 }
-

@@ -1,4 +1,3 @@
-
 import { collection, doc, setDoc, getDoc, getDocs, query, where, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { Parameter, RatingModel, RatingScale } from './rating-engine';
@@ -47,6 +46,7 @@ export const saveScale = async (s: any) => {
     await setDoc(doc(db, 'scales', id), data, { merge: true });
     return id;
 };
+export const deleteScale = (id: string) => deleteDoc(doc(db, 'scales', id));
 
 // COUNTRIES
 export interface Country { id: string; name: string; region: string; incomeGroup: string; currency: string; population: number; gdp: number; }

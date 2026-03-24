@@ -56,20 +56,22 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
       expression = expression.replace(regex, val.toString());
     }
 
-    // 2. Basic sanitation - only allow numbers, operators, and parentheses
-    if (/[^-+*/().\d\s]/.test(expression)) {
-      console.warn("Formula contains invalid characters after slug replacement:", expression);
+    // 2. Sanitation - check for remaining unreplaced slugs (letters)
+    // We allow numbers, operators, dots, spaces, and parentheses.
+    const remainingAlpha = expression.replace(/[0-9.+\-*/()\s]/g, '');
+    if (remainingAlpha.length > 0) {
+      // If alphabetical characters remain, it means some slugs weren't found in context
       return 0;
     }
 
-    // 3. Evaluate result
+    // 3. Evaluate result safely
     // eslint-disable-next-line no-new-func
     const result = new Function(`return ${expression}`)();
     
-    if (!isFinite(result)) return 0;
+    if (typeof result !== 'number' || !isFinite(result)) return 0;
     return result;
   } catch (e) {
-    console.error("Formula evaluation error:", e);
+    // Fail silently during live typing to prevent UI crashes
     return 0;
   }
 }
@@ -113,12 +115,14 @@ export function runDynamicRating(
   const derivedParams = parameters.filter(p => p.type === 'derived' && p.formula);
   
   // Chained derivation: allow derived parameters to depend on others
-  // We sort by dependencies or just run a single pass if dependencies are simple
-  derivedParams.forEach(p => {
-    const computedValue = evaluateFormula(p.formula!, valuesBySlug);
-    derivedMetrics[p.id] = computedValue;
-    valuesBySlug[p.slug] = computedValue;
-  });
+  // We run multiple passes to ensure dependencies are resolved (simple for MVP)
+  for (let i = 0; i < 2; i++) {
+    derivedParams.forEach(p => {
+      const computedValue = evaluateFormula(p.formula!, valuesBySlug);
+      derivedMetrics[p.id] = computedValue;
+      valuesBySlug[p.slug] = computedValue;
+    });
+  }
 
   // 2. Score metrics using the ID-based model weights
   Object.keys(model.weights).forEach((paramId) => {

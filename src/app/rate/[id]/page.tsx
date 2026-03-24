@@ -169,21 +169,17 @@ export default function RatingExecutionPage() {
         const results: Record<string, number> = {};
         const derived = parameters.filter(p => p.type === 'derived' && p.formula);
         
-        derived.forEach(p => {
-            const val = evaluateFormula(p.formula!, valuesBySlug);
-            results[p.id] = val;
-            valuesBySlug[p.slug] = val; // Allow chaining
-        });
+        // Multi-pass to handle simple chaining
+        for (let pass = 0; pass < 2; pass++) {
+            derived.forEach(p => {
+                const val = evaluateFormula(p.formula!, valuesBySlug);
+                results[p.id] = val;
+                valuesBySlug[p.slug] = val; // Feed back into context for chaining
+            });
+        }
         
         return results;
     }, [factSheet, parameters]);
-
-    // Debug logging for computed values
-    useEffect(() => {
-        if (Object.keys(liveDerivedMetrics).length > 0) {
-            console.log("Live Computed Metrics:", liveDerivedMetrics);
-        }
-    }, [liveDerivedMetrics]);
 
     const handleAutoFill = async () => {
         if (!country || !parameters.length) return
@@ -226,7 +222,6 @@ export default function RatingExecutionPage() {
         
         if (syncCount > 0) {
             toast({ title: "Data Synchronized", description: `Successfully synchronized ${syncCount} parameters for ${country.name}.` })
-            console.log(`Auto Fetch: Synchronized ${syncCount} parameters for ${country.name}`);
         } else {
             toast({ title: "Already Up-to-date", description: "No additional automated data found." })
         }

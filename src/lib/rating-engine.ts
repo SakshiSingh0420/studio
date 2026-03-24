@@ -47,6 +47,7 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
     if (!formula) return 0;
 
     let expression = formula.toLowerCase();
+    // Sort slugs by length descending to prevent partial matches (e.g., 'gdp' matching 'gdp_growth')
     const sortedSlugs = Object.keys(valuesBySlug).sort((a, b) => b.length - a.length);
     
     for (const slug of sortedSlugs) {
@@ -57,6 +58,7 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
 
     const remainingAlpha = expression.replace(/[0-9.+\-*/()\s]/g, '');
     if (/[a-z]/i.test(remainingAlpha)) {
+      console.warn("Formula contains unresolved variables:", remainingAlpha);
       return 0;
     }
 
@@ -66,6 +68,7 @@ export function evaluateFormula(formula: string, valuesBySlug: Record<string, nu
     if (typeof result !== 'number' || !isFinite(result)) return 0;
     return result;
   } catch (e) {
+    console.error("Formula Evaluation Error:", e);
     return 0;
   }
 }
@@ -89,7 +92,7 @@ export function scoreMetric(value: number, config: ModelTransformation): number 
 }
 
 /**
- * Executes the full rating calculation pipeline with robust mapping and hardcoded fallbacks.
+ * Executes the full rating calculation pipeline.
  */
 export function runDynamicRating(
   valuesById: Record<string, number>,
@@ -102,38 +105,28 @@ export function runDynamicRating(
   const derivedMetrics: Record<string, number> = {};
   const actualValuesUsed: Record<string, number> = {};
   
-  // Context to hold values by SLUG for formulas and logic
+  // 1. Build context using SLUGS for formula execution
   const context: Record<string, number> = {};
-  
-  // Stage 1: Map raw inputs to context by both ID and SLUG
   parameters.forEach(p => {
     const val = valuesById[p.id] ?? 0;
-    context[p.slug] = val;
-    // We always want the ID map to have the value for the UI table
-    actualValuesUsed[p.id] = val;
+    const normalizedSlug = p.slug.toLowerCase().replace(/-/g, '_');
+    context[normalizedSlug] = val;
+    actualValuesUsed[p.id] = val; // Default to input value
   });
 
-  // Stage 2: Hardcoded Calculation Layer for Demo Resilience
-  // This ensures that even if IDs don't match, we calculate critical metrics by SLUG
-  const calculateHardcoded = (targetSlugs: string[], sourceSlugs: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
-    // Find ANY parameter that matches one of the target slugs
+  console.log("Calculation Context (Slugs):", context);
+
+  // 2. Run Hardcoded Calculation Layer (Demo Resilience)
+  const runHardcoded = (targetSlugs: string[], sourceSlugs: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
     const p = parameters.find(param => targetSlugs.includes(param.slug.toLowerCase().replace(/-/g, '_')));
-    
     if (p) {
       const localCtx: Record<string, number> = {};
       Object.entries(sourceSlugs).forEach(([key, variations]) => {
         let foundVal = 0;
         for (const v of variations) {
-          const normalizedV = v.toLowerCase().replace(/-/g, '_');
-          // Check context by slug or by ID
-          if (context[v] !== undefined && context[v] !== 0) {
-            foundVal = context[v];
-            break;
-          }
-          // Fallback check against parameters list to find the ID
-          const sourceParam = parameters.find(sp => sp.slug.toLowerCase().replace(/-/g, '_') === normalizedV);
-          if (sourceParam && valuesById[sourceParam.id]) {
-            foundVal = Number(valuesById[sourceParam.id]);
+          const normV = v.toLowerCase().replace(/-/g, '_');
+          if (context[normV] !== undefined) {
+            foundVal = context[normV];
             break;
           }
         }
@@ -141,56 +134,49 @@ export function runDynamicRating(
       });
 
       const result = logic(localCtx);
-      context[p.slug] = result;
+      context[p.slug.toLowerCase().replace(/-/g, '_')] = result;
       actualValuesUsed[p.id] = result;
       derivedMetrics[p.id] = result;
+      console.log(`Hardcoded Calculation: ${p.slug} = ${result}`);
     }
   };
 
-  // Debt to GDP: (Debt / GDP) * 100
-  calculateHardcoded(['debt_to_gdp', 'debt-to-gdp'], 
-    { debt: ['government_debt', 'debt', 'total_debt', 'govt_debt'], gdp: ['gdp'] }, 
+  // Debt to GDP
+  runHardcoded(['debt_to_gdp', 'debt_to_gdp_ratio', 'debt_gdp'], 
+    { debt: ['government_debt', 'debt', 'total_debt'], gdp: ['gdp'] }, 
     (c) => (c.debt / (c.gdp || 1)) * 100
   );
 
-  // Reserve Cover: FX Reserves / (Imports / 12)
-  calculateHardcoded(['reserve_cover', 'reserves_cover'], 
-    { res: ['fx_reserves', 'reserves', 'reserves_total'], imp: ['imports', 'total_imports'] }, 
+  // Reserve Cover
+  runHardcoded(['reserve_cover', 'fx_reserve_months'], 
+    { res: ['fx_reserves', 'reserves'], imp: ['imports'] }, 
     (c) => c.res / ((c.imp || 12) / 12)
   );
 
-  // Interest to Revenue: (Interest / Revenue) * 100
-  calculateHardcoded(['interest_to_revenue', 'interest-to-revenue'], 
-    { int: ['interest', 'interest_payments', 'debt_interest'], rev: ['revenue', 'government_revenue', 'total_revenue'] }, 
-    (c) => (c.int / (c.rev || 1)) * 100
-  );
-
-  // Stage 3: Formula Pass (for any derived parameters not hardcoded)
+  // 3. Run Formula Pass for other derived parameters
   parameters.filter(p => p.type === 'derived' && p.formula).forEach(p => {
-    if (actualValuesUsed[p.id] === undefined || actualValuesUsed[p.id] === 0) {
-      const computedValue = evaluateFormula(p.formula!, context);
-      context[p.slug] = computedValue;
-      actualValuesUsed[p.id] = computedValue;
-      derivedMetrics[p.id] = computedValue;
+    // Only compute if hardcoded didn't already set it
+    if (derivedMetrics[p.id] === undefined) {
+      const result = evaluateFormula(p.formula!, context);
+      const normalizedSlug = p.slug.toLowerCase().replace(/-/g, '_');
+      context[normalizedSlug] = result;
+      actualValuesUsed[p.id] = result;
+      derivedMetrics[p.id] = result;
+      console.log(`Formula Calculation: ${p.slug} = ${result}`);
     }
   });
 
-  // Stage 4: Scoring & Weighting
-  // Iterate through all parameters defined in the model's weights
+  // 4. Scoring and Weighting
   Object.keys(model.weights).forEach((paramId) => {
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
 
-    // Use calculated value if exists, otherwise fallback to context/input
-    const val = actualValuesUsed[paramId] ?? context[p.slug] ?? 0;
+    const val = actualValuesUsed[paramId] ?? 0;
     const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
     
     const score = scoreMetric(val, trans);
     transformedScores[paramId] = score;
     weightedScores[paramId] = score * (model.weights[paramId] / 100);
-    
-    // Final sync for UI display
-    actualValuesUsed[paramId] = val;
   });
 
   const rawFinalScore = Object.values(weightedScores).reduce((a, b) => a + b, 0);

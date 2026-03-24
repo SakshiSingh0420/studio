@@ -32,40 +32,6 @@ import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
-// Enterprise Market Data Mock (Standardized Slugs)
-const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
-    "India": {
-        "gdp": 3400000000000,
-        "gdp_growth": 6.8,
-        "inflation": 5.1,
-        "fx_reserves": 640000000000,
-        "government_debt": 2771000000000,
-        "governance_score": 0.65,
-        "political_stability": 0.55,
-        "interest_payments": 22000000000,
-        "imports": 740000000000,
-        "exports": 680000000000,
-        "government_revenue": 590000000000,
-        "external_debt": 620000000000,
-        "debt_service": 45000000000
-    },
-    "USA": {
-        "gdp": 27000000000000,
-        "gdp_growth": 2.5,
-        "inflation": 3.1,
-        "fx_reserves": 240000000000,
-        "government_debt": 33000000000000,
-        "governance_score": 0.88,
-        "political_stability": 0.75,
-        "interest_payments": 680000000000,
-        "imports": 3600000000000,
-        "exports": 2900000000000,
-        "government_revenue": 5000000000000,
-        "external_debt": 25000000000000,
-        "debt_service": 900000000000
-    }
-}
-
 export default function RatingExecutionPage() {
     const { id } = useParams()
     const router = useRouter()
@@ -99,32 +65,12 @@ export default function RatingExecutionPage() {
                 ])
                 
                 const found = countriesData.find(c => c.id === id)
-                let initialFactSheet: FactSheetData = {}
-                let filled = new Set<string>()
-
                 if (found) {
                     setCountry(found)
                     const saved = await getFactSheet(found.id)
-                    if (saved) {
-                        initialFactSheet = saved
-                    } else {
-                        const mockData = MOCK_MARKET_DATA[found.name]
-                        if (mockData) {
-                            paramsData.forEach(p => {
-                                if (p.type === 'raw' && p.dataSource.includes('Auto')) {
-                                    const val = mockData[p.slug]
-                                    if (val !== undefined) {
-                                        initialFactSheet[p.id] = val
-                                        filled.add(p.id)
-                                    }
-                                }
-                            }) 
-                        }
-                    }
+                    if (saved) setFactSheet(saved)
                 }
                 
-                setFactSheet(initialFactSheet)
-                setAutoFilledFields(filled)
                 setModels(modelsData)
                 setScales(scalesData)
                 setParameters(paramsData)
@@ -132,7 +78,7 @@ export default function RatingExecutionPage() {
                 if (modelsData.length > 0) setSelectedModel(modelsData[0])
                 if (scalesData.length > 0) setSelectedScale(scalesData[0])
             } catch (error) {
-                console.error("Analytical Initialization Error:", error)
+                console.error("Initialization Error:", error)
             } finally {
                 setLoading(false) 
             }
@@ -140,70 +86,37 @@ export default function RatingExecutionPage() {
         load()
     }, [id])
 
-    // Live calculation for UI feedback
+    // Live derived metrics for the input view
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         const context: Record<string, number> = {}; 
         parameters.forEach(p => {
             if (p.type === 'raw') {
                 const rawVal = factSheet[p.id];
-                context[p.slug] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+                const normalizedSlug = p.slug.toLowerCase().replace(/-/g, '_');
+                context[normalizedSlug] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
             }
         });
         
         const results: Record<string, number> = {};
-        const derived = parameters.filter(p => p.type === 'derived');
-        
-        derived.forEach(p => {
-            if (p.slug === 'debt_to_gdp') {
-                const d = context['government_debt'] || context['debt'] || 0;
-                const g = context['gdp'] || 1;
-                results[p.id] = (d / g) * 100;
-            } else if (p.slug === 'reserve_cover') {
-                const r = context['fx_reserves'] || context['reserves'] || 0;
-                const i = context['imports'] || 12;
-                results[p.id] = r / (i / 12);
+        parameters.filter(p => p.type === 'derived').forEach(p => {
+            const normalizedTarget = p.slug.toLowerCase().replace(/-/g, '_');
+            
+            // Hardcoded logic for common ratios in the UI preview
+            if (normalizedTarget === 'debt_to_gdp') {
+                const debt = context['government_debt'] || context['debt'] || 0;
+                const gdp = context['gdp'] || 1;
+                results[p.id] = (debt / gdp) * 100;
             } else if (p.formula) {
                 results[p.id] = evaluateFormula(p.formula, context);
             }
         });
         
         return results;
-    }, [factSheet, parameters]); 
-
-    const handleAutoFill = async () => {
-        if (!country || !parameters.length) return
-        setIsFetchingAuto(true)
-        await new Promise(r => setTimeout(r, 600))
-        const mockData = MOCK_MARKET_DATA[country.name]
-        if (!mockData) {
-            toast({ title: "Source Unavailable", description: `No market profile exists for ${country.name}.`, variant: "destructive" })
-            setIsFetchingAuto(false)
-            return
-        }
-        let syncCount = 0
-        const updatedFilled = new Set(autoFilledFields)
-        setFactSheet(prev => {
-            const next = { ...prev };
-            parameters.forEach(p => {
-                if (p.type === 'raw') {
-                    const val = mockData[p.slug]
-                    if (val !== undefined) {
-                        next[p.id] = val
-                        updatedFilled.add(p.id)
-                        syncCount++
-                    }
-                }
-            })
-            return next;
-        })
-        setAutoFilledFields(updatedFilled)
-        toast({ title: "Market Data Sync", description: `Synchronized ${syncCount} macroeconomic parameters.` })
-        setIsFetchingAuto(false)
-    }
+    }, [factSheet, parameters]);
 
     const handleRun = () => {
-        if (!selectedModel || !selectedScale) return
+        if (!selectedModel || !selectedScale || !parameters.length) return
         
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
@@ -211,7 +124,9 @@ export default function RatingExecutionPage() {
             numericInputs[p.id] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
         });
 
+        // Trigger dynamic rating calculation
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
+        console.log("Analysis Result:", result);
         setCalculation(result)
         setStep("calculate")
     }
@@ -225,7 +140,8 @@ export default function RatingExecutionPage() {
             setFactSheet(prev => {
                 const next = { ...prev };
                 parameters.forEach(p => {
-                    const val = (suggested as any)[p.slug];
+                    const normSlug = p.slug.toLowerCase().replace(/-/g, '_');
+                    const val = (suggested as any)[normSlug];
                     if (p.type === 'raw' && val !== undefined && val !== null) {
                         next[p.id] = val
                         filled.add(p.id)
@@ -234,9 +150,9 @@ export default function RatingExecutionPage() {
                 return next;
             });
             setAutoFilledFields(filled)
-            toast({ title: "AI Synthesis Complete", description: "Updated fact sheet with market-derived suggestions." })
+            toast({ title: "AI Synthesis Complete" })
         } catch (e) {
-            toast({ title: "AI Error", variant: "destructive", description: "Failed to synthesize analytical data." })
+            toast({ title: "AI Error", variant: "destructive" })
         } finally {
             setIsGenerating(false)
         }
@@ -254,31 +170,31 @@ export default function RatingExecutionPage() {
             approvalStatus: 'pending',
             reason: rationale
         })
-        toast({ title: "Rating Saved" })
+        toast({ title: "Rating Submitted" })
         router.push('/')
     }
 
-    if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin text-primary w-8 h-8" /></div>
+    if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin w-8 h-8 text-primary" /></div>
 
     return (
         <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"> 
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-primary">Execute Rating: {country?.name}</h1>
-                    <p className="text-muted-foreground mt-1 text-lg">Current Stage: <span className="capitalize text-foreground font-semibold">{step}</span></p>
+                    <h1 className="text-3xl font-bold tracking-tight text-primary">Execution: {country?.name}</h1>
+                    <p className="text-muted-foreground mt-1 capitalize font-medium">{step} Phase</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => router.back()}>Abort</Button>
+                    <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
                     {step === "input" && <Button onClick={handleRun} className="bg-primary"><Calculator className="w-4 h-4 mr-2" /> Run Analysis</Button>}
-                    {step === "calculate" && <Button onClick={() => setStep("review")} className="bg-primary">Move to Review <ChevronRight className="w-4 h-4 ml-2" /></Button>}
-                    {step === "review" && <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="w-4 h-4 mr-2" /> Submit for Approval</Button>}
+                    {step === "calculate" && <Button onClick={() => setStep("review")} className="bg-primary">Continue to Review <ChevronRight className="w-4 h-4 ml-2" /></Button>}
+                    {step === "review" && <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white"><CheckCircle className="w-4 h-4 mr-2" /> Finalize Rating</Button>}
                 </div>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-12">
-                <div className="lg:col-span-3 space-y-6">
+                <div className="lg:col-span-3">
                     <Card>
-                        <CardHeader><CardTitle className="text-xs font-bold uppercase text-muted-foreground">Framework Settings</CardTitle></CardHeader>
+                        <CardHeader><CardTitle className="text-xs font-bold uppercase text-muted-foreground">Framework</CardTitle></CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
                                 <label className="text-xs font-semibold">Analytical Model</label>
@@ -288,7 +204,7 @@ export default function RatingExecutionPage() {
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <label className="text-xs font-semibold">Target Rating Scale</label>
+                                <label className="text-xs font-semibold">Rating Scale</label>
                                 <Select onValueChange={(v) => setSelectedScale(scales.find(s => s.id === v)!)} value={selectedScale?.id}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>{scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
@@ -301,49 +217,39 @@ export default function RatingExecutionPage() {
                 <div className="lg:col-span-9">
                     {step === "input" && (
                         <Card>
-                            <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b pb-6">
-                                <div><CardTitle>Country Fact Sheet</CardTitle></div>
-                                <div className="flex gap-2">
-                                    <Button size="sm" variant="outline" onClick={handleAutoFill} disabled={isFetchingAuto}>
-                                        <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isFetchingAuto && "animate-spin")} /> Market Data Sync
-                                    </Button>
-                                    <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating}>
-                                        <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500" /> GenAI Synthesis
-                                    </Button>
-                                </div>
+                            <CardHeader className="flex flex-row items-center justify-between border-b pb-6">
+                                <CardTitle>Country Fact Sheet</CardTitle>
+                                <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating}>
+                                    <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500" /> GenAI Synthesis
+                                </Button>
                             </CardHeader>
                             <CardContent className="pt-8">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {parameters.filter(p => p.type === 'raw').map((p) => (
                                         <div key={p.id} className="space-y-1.5">
-                                            <label className="text-xs font-bold text-muted-foreground flex items-center justify-between">
-                                                <span>{p.name}</span>
-                                                <span className="text-[9px] font-mono opacity-40 uppercase">{p.slug}</span>
-                                            </label>
+                                            <label className="text-[10px] font-bold text-muted-foreground uppercase">{p.name}</label>
                                             <div className="relative">
                                                 <Input 
                                                     type="number" 
                                                     value={factSheet[p.id] ?? ""} 
                                                     onChange={e => setFactSheet({...factSheet, [p.id]: e.target.value === "" ? "" : Number(e.target.value)})} 
-                                                    className={cn(autoFilledFields.has(p.id) && "bg-green-50/40 border-green-200")} 
+                                                    className={cn(autoFilledFields.has(p.id) && "bg-green-50 border-green-200")} 
                                                 />
-                                                {autoFilledFields.has(p.id) && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-green-600 font-black">AUTO</span>}
+                                                {autoFilledFields.has(p.id) && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-green-600 font-bold">AI</span>}
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                                 <div className="mt-12 pt-8 border-t">
-                                    <h3 className="text-sm font-bold mb-6">Calculated Ratios & Logic</h3>
+                                    <h3 className="text-sm font-bold mb-4">Live Analytical Ratios</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         {parameters.filter(p => p.type === 'derived').map(p => (
-                                            <div key={p.id} className="p-4 bg-muted/10 rounded-lg border flex justify-between items-center">
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="text-xs font-bold truncate">{p.name}</p>
-                                                    <p className="text-[10px] text-muted-foreground font-mono">{p.formula || 'System Logic'}</p>
+                                            <div key={p.id} className="p-4 bg-muted/20 rounded-lg border flex justify-between items-center">
+                                                <div>
+                                                    <p className="text-xs font-bold">{p.name}</p>
+                                                    <p className="text-[9px] text-muted-foreground">{p.slug}</p>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="text-sm font-black text-primary font-mono">{(liveDerivedMetrics[p.id] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
-                                                </div>
+                                                <p className="text-sm font-black text-primary">{(liveDerivedMetrics[p.id] ?? 0).toFixed(2)}</p>
                                             </div>
                                         ))}
                                     </div>
@@ -356,39 +262,42 @@ export default function RatingExecutionPage() {
                         <Card>
                             <CardHeader><CardTitle>Quantitative Scoring Breakdown</CardTitle></CardHeader>
                             <CardContent>
-                                <Table className="border rounded-xl">
+                                <Table className="border rounded-lg overflow-hidden">
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Analytical Factor</TableHead>
+                                            <TableHead>Analytical Parameter</TableHead>
                                             <TableHead>Final Value</TableHead>
                                             <TableHead>Trans. Score</TableHead>
-                                            <TableHead>Pillar Weight</TableHead>
-                                            <TableHead className="text-right">Weighted Impact</TableHead>
+                                            <TableHead>Weight</TableHead>
+                                            <TableHead className="text-right">Impact</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {Object.keys(selectedModel?.weights || {}).map((pid) => {
                                             const p = parameters.find(param => param.id === pid)
+                                            const val = calculation.actualValuesUsed[pid] ?? 0;
                                             return (
                                                 <TableRow key={pid}>
-                                                    <TableCell><span className="font-bold text-sm">{p?.name || pid}</span></TableCell>
-                                                    <TableCell className="font-mono">{(calculation.actualValuesUsed[pid] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
-                                                    <TableCell className="font-extrabold text-primary">{calculation.transformedScores[pid]}</TableCell>
+                                                    <TableCell className="font-bold">{p?.name || pid}</TableCell>
+                                                    <TableCell className="font-mono text-primary font-bold">
+                                                        {val.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                                    </TableCell>
+                                                    <TableCell className="font-bold">{calculation.transformedScores[pid]}</TableCell>
                                                     <TableCell>{selectedModel?.weights[pid]}%</TableCell>
-                                                    <TableCell className="text-right font-mono font-black">{(calculation.weightedScores[pid] || 0).toFixed(3)}</TableCell>
+                                                    <TableCell className="text-right font-mono font-bold">{(calculation.weightedScores[pid] || 0).toFixed(3)}</TableCell>
                                                 </TableRow>
                                             )
                                         })}
                                     </TableBody>
                                 </Table>
-                                <div className="mt-8 grid grid-cols-2 gap-6">
-                                    <div className="bg-primary text-white p-8 rounded-2xl">
-                                        <p className="text-[10px] font-black uppercase opacity-80">Aggregate Risk Score</p>
-                                        <div className="text-6xl font-black">{calculation.finalScore.toFixed(1)}%</div>
+                                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-primary text-white p-8 rounded-xl">
+                                        <p className="text-[10px] font-bold uppercase opacity-80">Aggregate Risk Score</p>
+                                        <div className="text-5xl font-black">{calculation.finalScore.toFixed(1)}%</div>
                                     </div>
-                                    <div className="bg-white p-8 rounded-2xl border-4 border-primary/10">
-                                        <p className="text-[10px] font-black uppercase text-primary opacity-80">Implied Credit Designation</p>
-                                        <div className="text-6xl font-black text-primary">{calculation.initialRating}</div>
+                                    <div className="bg-white p-8 rounded-xl border-4 border-primary/10">
+                                        <p className="text-[10px] font-bold uppercase text-primary opacity-80">Implied Rating</p>
+                                        <div className="text-5xl font-black text-primary">{calculation.initialRating}</div>
                                     </div>
                                 </div>
                             </CardContent>

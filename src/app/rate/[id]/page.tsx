@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from "react"
@@ -29,11 +28,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2, Info, RefreshCw, Database } from "lucide-react"
 import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
 import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
-// Enterprise Market Data Mock (Simulating Bloomberg/Reuters/IMF Data Feed)
+// Enterprise Market Data Mock (Slugs mapped to standard parameter definitions)
 const MOCK_MARKET_DATA: Record<string, Record<string, number>> = {
     "India": {
         "gdp": 3400000000000,
@@ -124,12 +122,10 @@ export default function RatingExecutionPage() {
                     if (saved) {
                         initialFactSheet = saved
                     } else {
-                        // Attempt initial auto-fill if no existing fact sheet
                         const mockData = MOCK_MARKET_DATA[found.name]
                         if (mockData) {
-                            console.log(`Auto Fetch: Initial load for ${found.name}`);
                             paramsData.forEach(p => {
-                                if (p.type === 'raw' && (p.dataSource === 'IMF (Auto)' || p.dataSource === 'World Bank (Auto)')) {
+                                if (p.type === 'raw' && p.dataSource.includes('Auto')) {
                                     const val = mockData[p.slug]
                                     if (val !== undefined) {
                                         initialFactSheet[p.id] = val
@@ -158,56 +154,51 @@ export default function RatingExecutionPage() {
         load()
     }, [id])
 
-    /**
-     * Explicit handler for the Auto Fetch Data button.
-     * Triggers population from mock enterprise sources.
-     */
     const handleAutoFill = async () => {
         if (!country || !parameters.length) return
         setIsFetchingAuto(true)
-        console.log(`Auto Fetch: Manual synchronization triggered for ${country.name}`);
         
-        // Simulating data synchronization latency
-        await new Promise(r => setTimeout(r, 800))
+        await new Promise(r => setTimeout(r, 600))
         
         const mockData = MOCK_MARKET_DATA[country.name]
         if (!mockData) {
             toast({ 
                 title: "Source Data Unavailable", 
-                description: `No automated source data found for ${country.name} in the analytical repository.`, 
+                description: `No automated source data found for ${country.name}.`, 
                 variant: "destructive" 
             })
             setIsFetchingAuto(false)
             return
         }
 
-        const updatedFactSheet = { ...factSheet }
-        const updatedFilled = new Set(autoFilledFields)
         let syncCount = 0
+        const updatedFilled = new Set(autoFilledFields)
 
-        parameters.forEach(p => {
-            // Target parameters defined as Auto
-            if (p.type === 'raw' && (p.dataSource === 'IMF (Auto)' || p.dataSource === 'World Bank (Auto)')) {
-                const val = mockData[p.slug]
-                if (val !== undefined) {
-                    // Safety check: Preserve manual entries (only fill if current value is 0 or undefined)
-                    if (!factSheet[p.id] || factSheet[p.id] === 0) {
-                        updatedFactSheet[p.id] = val
-                        updatedFilled.add(p.id)
-                        syncCount++
+        setFactSheet(prev => {
+            const next = { ...prev };
+            parameters.forEach(p => {
+                if (p.type === 'raw' && p.dataSource.includes('Auto')) {
+                    const val = mockData[p.slug]
+                    if (val !== undefined) {
+                        if (!prev[p.id] || prev[p.id] === 0) {
+                            next[p.id] = val
+                            updatedFilled.add(p.id)
+                            syncCount++
+                        }
                     }
                 }
-            }
+            })
+            return next;
         })
 
-        setFactSheet(updatedFactSheet)
         setAutoFilledFields(updatedFilled)
         
-        console.log(`Auto Fetch: Synchronized ${syncCount} parameters for ${country.name}`);
-        toast({ 
-            title: "Data Synchronized", 
-            description: `Successfully synchronized ${syncCount} automated parameters for ${country.name}.` 
-        })
+        if (syncCount > 0) {
+            toast({ title: "Data Synchronized", description: `Successfully synchronized ${syncCount} parameters for ${country.name}.` })
+            console.log(`Auto Fetch: Synchronized ${syncCount} parameters for ${country.name}`);
+        } else {
+            toast({ title: "Already Up-to-date", description: "No additional automated data found." })
+        }
         setIsFetchingAuto(false)
     }
 
@@ -226,18 +217,20 @@ export default function RatingExecutionPage() {
         setIsGenerating(true)
         try {
             const suggested = await suggestFactSheetData({ countryName: country.name })
-            const merged = { ...factSheet }
             const filled = new Set(autoFilledFields)
             
-            parameters.forEach(p => {
-                if (p.type === 'raw' && (suggested as any)[p.slug] !== undefined) {
-                    if (!factSheet[p.id] || factSheet[p.id] === 0) {
-                        merged[p.id] = (suggested as any)[p.slug]
-                        filled.add(p.id)
+            setFactSheet(prev => {
+                const next = { ...prev };
+                parameters.forEach(p => {
+                    if (p.type === 'raw' && (suggested as any)[p.slug] !== undefined) {
+                        if (!prev[p.id] || prev[p.id] === 0) {
+                            next[p.id] = (suggested as any)[p.slug]
+                            filled.add(p.id)
+                        }
                     }
-                }
-            })
-            setFactSheet(merged)
+                })
+                return next;
+            });
             setAutoFilledFields(filled)
             toast({ title: "AI Synthesis Complete", description: "Fact sheet updated with market-derived AI suggestions." })
         } catch (e) {
@@ -383,7 +376,7 @@ export default function RatingExecutionPage() {
                             <CardContent className="pt-8">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {rawParameters.map((p) => {
-                                        const isAuto = p.dataSource === 'IMF (Auto)' || p.dataSource === 'World Bank (Auto)';
+                                        const isAuto = p.dataSource.includes('Auto');
                                         const isFilled = autoFilledFields.has(p.id);
 
                                         return (
@@ -398,15 +391,17 @@ export default function RatingExecutionPage() {
                                                 <div className="relative">
                                                     <Input 
                                                         type="number" 
-                                                        value={factSheet[p.id] ?? 0} 
+                                                        value={factSheet[p.id] ?? ""} 
                                                         onChange={e => {
                                                             const val = e.target.value === "" ? 0 : Number(e.target.value)
-                                                            setFactSheet({...factSheet, [p.id]: val})
-                                                            // Manual override clears the auto-filled badge
-                                                            const newFilled = new Set(autoFilledFields)
-                                                            newFilled.delete(p.id)
-                                                            setAutoFilledFields(newFilled)
+                                                            setFactSheet(prev => ({...prev, [p.id]: val}))
+                                                            setAutoFilledFields(prev => {
+                                                                const next = new Set(prev);
+                                                                next.delete(p.id);
+                                                                return next;
+                                                            });
                                                         }} 
+                                                        placeholder="0"
                                                         className={cn(
                                                             "h-10 transition-all font-mono",
                                                             isFilled && "bg-green-50/40 border-green-200 focus:bg-background pr-16"
@@ -423,7 +418,7 @@ export default function RatingExecutionPage() {
                                     })}
                                     {rawParameters.length === 0 && (
                                         <div className="col-span-full py-20 text-center border-2 border-dashed rounded-lg bg-muted/20">
-                                            <p className="text-sm text-muted-foreground font-medium">No input parameters registered. Access Configuration &gt; Parameter Master.</p>
+                                            <p className="text-sm text-muted-foreground font-medium">No input parameters registered.</p>
                                         </div>
                                     )}
                                 </div>
@@ -431,7 +426,7 @@ export default function RatingExecutionPage() {
                                 {derivedParameters.length > 0 && (
                                     <div className="mt-12 pt-8 border-t">
                                         <h3 className="text-sm font-bold mb-6 flex items-center gap-2">
-                                            Calculated Ratios & Logic (Resolved on Run)
+                                            Calculated Ratios & Logic
                                             <Info className="w-4 h-4 text-muted-foreground opacity-70" />
                                         </h3>
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -464,9 +459,9 @@ export default function RatingExecutionPage() {
                                             <TableRow>
                                                 <TableHead>Risk Identifier</TableHead>
                                                 <TableHead>Final Value</TableHead>
-                                                <TableHead>Trans. Score (1-5)</TableHead>
+                                                <TableHead>Trans. Score</TableHead>
                                                 <TableHead>Model Weight</TableHead>
-                                                <TableHead className="text-right">Factor Impact</TableHead>
+                                                <TableHead className="text-right">Impact</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -480,7 +475,7 @@ export default function RatingExecutionPage() {
                                                         <TableCell>
                                                             <div className="flex flex-col">
                                                                 <span className="font-bold text-sm">{p?.name || pid}</span>
-                                                                <span className="text-[9px] text-muted-foreground font-mono uppercase truncate max-w-[200px]">{isDerived ? `Formula: ${p?.formula}` : p?.slug}</span>
+                                                                <span className="text-[9px] text-muted-foreground font-mono uppercase">{isDerived ? `Formula: ${p?.formula}` : p?.slug}</span>
                                                             </div>
                                                         </TableCell>
                                                         <TableCell className={cn("font-mono", isDerived && "text-primary font-black")}>
@@ -497,19 +492,13 @@ export default function RatingExecutionPage() {
                                         </TableBody>
                                     </Table>
                                     <div className="mt-8 grid grid-cols-2 gap-6">
-                                        <div className="bg-primary text-white p-8 rounded-2xl shadow-xl flex flex-col justify-center relative overflow-hidden">
-                                            <div className="absolute top-0 right-0 p-4 opacity-10">
-                                                <TrendingUp className="w-24 h-24" />
-                                            </div>
-                                            <p className="text-[10px] uppercase font-black opacity-80 tracking-[0.2em]">Aggregate Quantitative Score</p>
-                                            <div className="text-6xl font-black mt-2 leading-none">{calculation.finalScore.toFixed(1)}<span className="text-xl font-medium opacity-50 ml-1">%</span></div>
+                                        <div className="bg-primary text-white p-8 rounded-2xl shadow-xl flex flex-col justify-center">
+                                            <p className="text-[10px] uppercase font-black opacity-80 tracking-widest">Aggregate Score</p>
+                                            <div className="text-6xl font-black mt-2">{calculation.finalScore.toFixed(1)}%</div>
                                         </div>
-                                        <div className="bg-white p-8 rounded-2xl shadow-xl border-4 border-primary/10 flex flex-col justify-center relative overflow-hidden">
-                                            <div className="absolute top-0 right-0 p-4 opacity-5">
-                                                <ShieldCheck className="w-24 h-24 text-primary" />
-                                            </div>
-                                            <p className="text-[10px] uppercase font-black text-primary opacity-80 tracking-[0.2em]">Implied Credit Rating</p>
-                                            <div className="text-6xl font-black text-primary mt-2 leading-none">{calculation.initialRating}</div>
+                                        <div className="bg-white p-8 rounded-2xl shadow-xl border-4 border-primary/10 flex flex-col justify-center">
+                                            <p className="text-[10px] uppercase font-black text-primary opacity-80 tracking-widest">Implied Rating</p>
+                                            <div className="text-6xl font-black text-primary mt-2">{calculation.initialRating}</div>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -522,62 +511,47 @@ export default function RatingExecutionPage() {
                             <Card className="shadow-lg border-t-4 border-t-primary">
                                 <CardHeader className="bg-muted/20">
                                     <CardTitle>Qualitative Adjustments</CardTitle>
-                                    <CardDescription>Overriding quantitative indicators with market signals.</CardDescription>
                                 </CardHeader>
                                 <CardContent className="pt-8 space-y-8">
                                     <div className="flex gap-4">
-                                        <Button variant="outline" className="flex-1 h-20 text-lg font-black border-2 hover:bg-green-50 hover:border-green-300 transition-all" onClick={() => setAdjustment(prev => prev + 1)}>
-                                            <ArrowUp className="w-6 h-6 mr-2 text-green-600" /> Notch Upgrade
+                                        <Button variant="outline" className="flex-1 h-20 text-lg font-black" onClick={() => setAdjustment(prev => prev + 1)}>
+                                            <ArrowUp className="w-6 h-6 mr-2 text-green-600" /> Upgrade
                                         </Button>
-                                        <Button variant="outline" className="flex-1 h-20 text-lg font-black border-2 hover:bg-red-50 hover:border-red-300 transition-all" onClick={() => setAdjustment(prev => prev - 1)}>
-                                            <ArrowDown className="w-6 h-6 mr-2 text-red-600" /> Notch Downgrade
+                                        <Button variant="outline" className="flex-1 h-20 text-lg font-black" onClick={() => setAdjustment(prev => prev - 1)}>
+                                            <ArrowDown className="w-6 h-6 mr-2 text-red-600" /> Downgrade
                                         </Button>
                                     </div>
-                                    <div className="p-8 bg-muted/30 rounded-2xl border-2 border-dashed border-primary/20 text-center">
-                                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Target Designation</p>
+                                    <div className="p-8 bg-muted/30 rounded-2xl border-2 border-dashed text-center">
+                                        <p className="text-[10px] font-black text-muted-foreground uppercase">Target Designation</p>
                                         <p className="text-6xl font-black text-primary mt-3">{calculation.initialRating}</p>
-                                        <p className="text-xs font-bold text-muted-foreground mt-4">Manual Bias applied: {adjustment > 0 ? `+${adjustment}` : adjustment} notch(es)</p>
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className="text-xs font-black uppercase text-muted-foreground">Analyst Rationale</label>
-                                        <textarea 
-                                            className="w-full min-h-[140px] p-5 text-sm rounded-2xl border-2 focus:border-primary focus:ring-4 focus:ring-primary/5 outline-none transition-all bg-background resize-none" 
-                                            placeholder="Document qualitative context for final committee review..." 
-                                        />
+                                        <p className="text-xs font-bold text-muted-foreground mt-4">Manual Bias: {adjustment > 0 ? `+${adjustment}` : adjustment} notch(es)</p>
                                     </div>
                                 </CardContent>
                             </Card>
 
-                            <Card className="shadow-lg flex flex-col border-t-4 border-t-accent">
+                            <Card className="shadow-lg border-t-4 border-t-accent">
                                 <CardHeader className="bg-muted/20 flex flex-row items-center justify-between">
                                     <div>
-                                        <CardTitle>AI Analytical Narrative</CardTitle>
-                                        <CardDescription>Synthesizing rationale from session metrics.</CardDescription>
+                                        <CardTitle>AI Analysis</CardTitle>
                                     </div>
-                                    <Button size="sm" variant="secondary" onClick={handleGenerateRationale} disabled={isGenerating} className="shadow-sm font-bold">
-                                        <Zap className="w-4 h-4 mr-2" /> {isGenerating ? "Synthesizing..." : "Generate Report"}
+                                    <Button size="sm" variant="secondary" onClick={handleGenerateRationale} disabled={isGenerating}>
+                                        <Zap className="w-4 h-4 mr-2" /> {isGenerating ? "Synthesizing..." : "Generate rationale"}
                                     </Button>
                                 </CardHeader>
-                                <CardContent className="pt-8 flex-1">
+                                <CardContent className="pt-8 min-h-[400px]">
                                     {isGenerating ? (
-                                        <div className="flex flex-col items-center justify-center h-full space-y-8 min-h-[400px]">
-                                            <div className="relative">
-                                                <Loader2 className="w-16 h-16 text-primary animate-spin opacity-40" />
-                                                <Zap className="w-6 h-6 text-yellow-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" />
-                                            </div>
-                                            <p className="text-sm font-bold text-muted-foreground animate-pulse tracking-wide">Synthesizing macroeconomic dataset rationale...</p>
+                                        <div className="flex flex-col items-center justify-center h-full space-y-4">
+                                            <Loader2 className="w-12 h-12 text-primary animate-spin" />
+                                            <p className="text-sm font-medium animate-pulse">Analyzing macroeconomic dataset...</p>
                                         </div>
                                     ) : rationale ? (
-                                        <div className="prose prose-sm max-h-[550px] overflow-auto pr-4 scrollbar-thin">
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap font-medium text-foreground/70">{rationale}</p>
+                                        <div className="prose prose-sm max-h-[500px] overflow-auto">
+                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{rationale}</p>
                                         </div>
                                     ) : (
-                                        <div className="h-full min-h-[400px] flex flex-col items-center justify-center border-4 border-dashed rounded-3xl bg-muted/5 opacity-50">
-                                            <Database className="w-16 h-16 text-muted-foreground mb-6 opacity-20" />
-                                            <p className="text-sm font-black text-muted-foreground uppercase tracking-widest">Analytical Session Narrative Pending</p>
-                                            <Button variant="ghost" size="sm" className="mt-6 font-bold" onClick={handleGenerateRationale}>
-                                                Synthesize Metrics Now
-                                            </Button>
+                                        <div className="h-full flex flex-col items-center justify-center opacity-50">
+                                            <Database className="w-12 h-12 mb-4" />
+                                            <p className="text-sm font-bold">No rationale generated</p>
                                         </div>
                                     )}
                                 </CardContent>

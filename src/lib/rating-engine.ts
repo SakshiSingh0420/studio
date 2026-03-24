@@ -164,7 +164,7 @@ export function runDynamicRating(
     }
   };
 
-  // Debt to GDP (Supports variants like 'Debt', 'Govt Debt', etc.)
+  // Debt to GDP
   runHardcoded(['debt_to_gdp', 'debt_to_gdp_ratio', 'debt_gdp'], 
     { 
         debt: ['government_debt', 'debt', 'total_debt', 'total_government_debt'], 
@@ -173,13 +173,22 @@ export function runDynamicRating(
     (c) => (c.debt / (c.gdp || 1)) * 100
   );
 
-  // Reserve Cover (Direct: FX Reserves / Imports)
+  // Reserve Cover
   runHardcoded(['reserve_cover', 'fx_reserve_months', 'reserves_to_imports', 'reserve_ratio'], 
     { 
         res: ['fx_reserves', 'reserves', 'foreign_exchange_reserves'], 
         imp: ['imports', 'total_imports'] 
     }, 
     (c) => c.imp === 0 ? 0 : (c.res / c.imp)
+  );
+
+  // Interest to Revenue (Failsafe Hardcoded)
+  runHardcoded(['interest_to_revenue', 'interest_revenue_ratio'], 
+    { 
+        interest: ['interest_payments', 'interest', 'govt_interest', 'government_interest_payments'], 
+        revenue: ['government_revenue', 'revenue', 'total_revenue', 'total_government_revenue'] 
+    }, 
+    (c) => c.revenue === 0 ? 0 : (c.interest / c.revenue) * 100
   );
 
   // 3. Run Formula Pass for other derived parameters

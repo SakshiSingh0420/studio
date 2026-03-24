@@ -96,13 +96,11 @@ export default function RatingExecutionPage() {
                 const rawVal = factSheet[p.id];
                 const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
                 
-                const slugKey = (p.slug || "").toLowerCase().replace(/-/g, '_');
+                const slugKey = (p.slug || p.id || "").toLowerCase().replace(/-/g, '_');
                 const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-                const idKey = (p.id || "").toLowerCase().replace(/-/g, '_');
 
                 if (slugKey) context[slugKey] = val;
                 if (nameKey) context[nameKey] = val;
-                context[idKey] = val;
             }
         });
         
@@ -116,13 +114,19 @@ export default function RatingExecutionPage() {
             if (slug === 'debt_to_gdp' || name === 'debt_to_gdp') {
                 const debt = context['government_debt'] || context['debt'] || context['total_government_debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || context['gross_domestic_product'] || 1;
-                results[p.id] = (debt / gdp) * 100;
+                results[p.id] = (debt / (gdp || 1)) * 100;
             } 
             // Failsafe 2: Reserve Cover
             else if (slug === 'reserve_cover' || name === 'reserve_cover') {
                 const res = context['fx_reserves'] || context['reserves'] || context['foreign_exchange_reserves'] || 0;
                 const imp = context['imports'] || context['total_imports'] || 0;
                 results[p.id] = imp === 0 ? 0 : (res / imp);
+            }
+            // Failsafe 3: Interest to Revenue
+            else if (slug === 'interest_to_revenue' || name === 'interest_to_revenue') {
+                const interest = context['interest_payments'] || context['interest'] || context['government_interest_payments'] || 0;
+                const revenue = context['government_revenue'] || context['revenue'] || context['total_revenue'] || 1;
+                results[p.id] = (interest / (revenue || 1)) * 100;
             }
             // General Formula Pass
             else if (p.formula) {
@@ -276,29 +280,39 @@ export default function RatingExecutionPage() {
                                     <div className="h-0.5 bg-slate-200 flex-1" />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                    {parameters.filter(p => p.type === 'derived').map(p => (
-                                        <div key={p.id} className="p-6 bg-white rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between transition-all hover:border-primary/30 hover:shadow-md group">
-                                            <div className="space-y-3">
-                                                <div className="flex justify-between items-start">
-                                                    <p className="text-base font-black text-slate-900 group-hover:text-primary transition-colors">{p.name}</p>
-                                                    <Settings2 className="w-4 h-4 text-slate-300 group-hover:text-primary transition-colors" />
+                                    {parameters.filter(p => p.type === 'derived').map(p => {
+                                        const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
+                                        const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+                                        let formulaDisplay = p.formula || 'Custom Logic';
+                                        
+                                        if (slug === 'debt_to_gdp' || name === 'debt_to_gdp') formulaDisplay = '(debt / gdp) * 100';
+                                        if (slug === 'reserve_cover' || name === 'reserve_cover') formulaDisplay = 'fx_reserves / imports';
+                                        if (slug === 'interest_to_revenue' || name === 'interest_to_revenue') formulaDisplay = '(interest / revenue) * 100';
+
+                                        return (
+                                            <div key={p.id} className="p-6 bg-white rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between transition-all hover:border-primary/30 hover:shadow-md group">
+                                                <div className="space-y-3">
+                                                    <div className="flex justify-between items-start">
+                                                        <p className="text-base font-black text-slate-900 group-hover:text-primary transition-colors">{p.name}</p>
+                                                        <Settings2 className="w-4 h-4 text-slate-300 group-hover:text-primary transition-colors" />
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-3xl font-black text-primary leading-none tracking-tighter">
+                                                            {(liveDerivedMetrics[p.id] ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className="text-3xl font-black text-primary leading-none tracking-tighter">
-                                                        {(liveDerivedMetrics[p.id] ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                <div className="mt-6 pt-4 border-t border-slate-50">
+                                                    <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+                                                        <span className="text-slate-400 italic font-medium">Formula:</span> 
+                                                        <span className="font-mono text-slate-700 bg-slate-50 px-2 py-0.5 rounded">
+                                                            {formulaDisplay}
+                                                        </span>
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="mt-6 pt-4 border-t border-slate-50">
-                                                <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
-                                                    <span className="text-slate-400 italic font-medium">Formula:</span> 
-                                                    <span className="font-mono text-slate-700 bg-slate-50 px-2 py-0.5 rounded">
-                                                        {p.slug === 'reserve_cover' ? 'fx_reserves / imports' : (p.formula || 'Custom Logic')}
-                                                    </span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
                                 </div>
                             </div>
                         </div>

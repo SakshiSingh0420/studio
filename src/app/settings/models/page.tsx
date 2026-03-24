@@ -171,22 +171,22 @@ export default function ModelBuilderPage() {
 
         <div className="lg:col-span-3">
           {selectedModel ? (
-            <Card className="border-2">
-              <CardHeader className="border-b bg-muted/20 sticky top-0 z-10">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <Card className="border-2 relative overflow-hidden">
+              <CardHeader className="border-b bg-card sticky top-0 z-20 shadow-sm transition-shadow">
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                   <div className="space-y-1">
                     <CardTitle className="text-xl">Analytical Architecture</CardTitle>
                     <CardDescription>Assign pillar weights and define transformation thresholds.</CardDescription>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 w-full lg:w-auto">
                     <div className={cn(
-                        "flex items-center gap-2 px-4 py-2 rounded-full border-2 font-bold transition-all",
+                        "flex items-center gap-2 px-4 py-2 rounded-full border-2 font-bold transition-all whitespace-nowrap text-sm",
                         totalWeight === 100 ? "bg-green-50 border-green-500 text-green-700" : "bg-red-50 border-red-500 text-red-700"
                     )}>
                         {totalWeight === 100 ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                         Total Weight: {totalWeight}%
                     </div>
-                    <Button onClick={handleSave} className="bg-primary shadow-lg hover:shadow-xl transition-all">
+                    <Button onClick={handleSave} className="bg-primary shadow-lg hover:shadow-xl transition-all flex-1 lg:flex-none">
                         <Save className="w-4 h-4 mr-2" /> Save Framework
                     </Button>
                   </div>

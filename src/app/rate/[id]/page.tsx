@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from "react"
@@ -25,11 +26,46 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2, Info } from "lucide-react"
+import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2, Info, RefreshCw, Database } from "lucide-react"
 import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
 import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
+
+// Sample data mapping for "Auto" sources
+const MOCK_AUTO_DATA: Record<string, Record<string, number>> = {
+    "India": {
+        "gdp": 3400,
+        "gdp_growth": 6.5,
+        "inflation": 5.5,
+        "fx_reserves": 600,
+        "debt": 85,
+        "governance_score": 0.6,
+        "revenue": 580,
+        "interest": 120
+    },
+    "USA": {
+        "gdp": 26000,
+        "gdp_growth": 2.1,
+        "inflation": 3.2,
+        "fx_reserves": 120,
+        "debt": 122,
+        "governance_score": 0.9,
+        "revenue": 4900,
+        "interest": 660
+    },
+    "Brazil": {
+        "gdp": 1900,
+        "gdp_growth": 2.9,
+        "inflation": 4.6,
+        "fx_reserves": 340,
+        "debt": 75,
+        "governance_score": 0.5,
+        "revenue": 320,
+        "interest": 95
+    }
+}
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -38,6 +74,7 @@ export default function RatingExecutionPage() {
     
     const [country, setCountry] = useState<Country | null>(null)
     const [factSheet, setFactSheet] = useState<FactSheetData>({})
+    const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set())
     const [models, setModels] = useState<RatingModel[]>([])
     const [scales, setScales] = useState<RatingScale[]>([])
     const [parameters, setParameters] = useState<Parameter[]>([])
@@ -47,6 +84,7 @@ export default function RatingExecutionPage() {
     
     const [calculation, setCalculation] = useState<any>(null)
     const [isGenerating, setIsGenerating] = useState(false)
+    const [isFetchingAuto, setIsFetchingAuto] = useState(false)
     const [rationale, setRationale] = useState("")
     const [adjustment, setAdjustment] = useState<number>(0)
     const [step, setStep] = useState<"input" | "calculate" | "review">("input")
@@ -66,7 +104,12 @@ export default function RatingExecutionPage() {
                 if (found) {
                     setCountry(found)
                     const saved = await getFactSheet(found.id)
-                    if (saved) setFactSheet(saved)
+                    if (saved) {
+                        setFactSheet(saved)
+                    } else {
+                        // Initial load auto-fill if no saved data
+                        applyAutoFill(found.name, paramsData, {})
+                    }
                 }
                 
                 setModels(modelsData)
@@ -84,6 +127,39 @@ export default function RatingExecutionPage() {
         }
         load()
     }, [id])
+
+    const applyAutoFill = (countryName: string, params: Parameter[], currentData: FactSheetData) => {
+        const mockData = MOCK_AUTO_DATA[countryName]
+        if (!mockData) return;
+
+        const newData = { ...currentData }
+        const filled = new Set<string>()
+
+        params.forEach(p => {
+            if (p.type === 'raw' && (p.dataSource === 'IMF (Auto)' || p.dataSource === 'World Bank (Auto)')) {
+                if (mockData[p.slug] !== undefined) {
+                    newData[p.id] = mockData[p.slug]
+                    filled.add(p.id)
+                }
+            }
+        })
+
+        setFactSheet(newData)
+        setAutoFilledFields(filled)
+    }
+
+    const handleFetchAuto = async () => {
+        if (!country) return
+        setIsFetchingAuto(true)
+        // Simulate network latency
+        await new Promise(r => setTimeout(r, 800))
+        applyAutoFill(country.name, parameters, factSheet)
+        toast({ 
+            title: "Data Synchronized", 
+            description: `Automated parameters updated for ${country.name} using latest IMF/WB signals.` 
+        })
+        setIsFetchingAuto(false)
+    }
 
     const handleRun = () => {
         if (!selectedModel || !selectedScale) {
@@ -172,7 +248,7 @@ export default function RatingExecutionPage() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-primary">Execute Rating: {country.name}</h1>
-                    <p className="text-muted-foreground mt-1">Sovereign Credit Workflow – Phase: <span className="capitalize text-foreground font-semibold">{step}</span></p>
+                    <p className="text-muted-foreground mt-1 text-lg">Sovereign Credit Workflow – Phase: <span className="capitalize text-foreground font-semibold">{step}</span></p>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => router.back()}>Cancel</Button>
@@ -237,31 +313,66 @@ export default function RatingExecutionPage() {
                 <div className="lg:col-span-9">
                     {step === "input" && (
                         <Card>
-                            <CardHeader className="flex flex-row items-center justify-between">
+                            <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                                 <div>
                                     <CardTitle>Sovereign Fact Sheet</CardTitle>
                                     <CardDescription>Input raw economic data for the current reporting cycle.</CardDescription>
                                 </div>
-                                <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating}>
-                                    <Zap className="w-4 h-4 mr-2 text-yellow-500" /> {isGenerating ? "Consulting Markets..." : "Suggest via AI"}
-                                </Button>
+                                <div className="flex gap-2">
+                                    <Button size="sm" variant="outline" onClick={handleFetchAuto} disabled={isFetchingAuto} className="border-green-200 text-green-700 hover:bg-green-50">
+                                        <RefreshCw className={cn("w-3.5 h-3.5 mr-2", isFetchingAuto && "animate-spin")} /> {isFetchingAuto ? "Syncing Sources..." : "Fetch Auto Data"}
+                                    </Button>
+                                    <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating}>
+                                        <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500" /> {isGenerating ? "Consulting AI..." : "AI Suggestions"}
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {rawParameters.map((p) => (
-                                        <div key={p.id} className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground flex justify-between">
-                                                <span>{p.name}</span>
-                                                <span className="text-[10px] opacity-40 font-mono">{p.slug}</span>
-                                            </label>
-                                            <Input 
-                                                type="number" 
-                                                value={factSheet[p.id] || 0} 
-                                                onChange={e => setFactSheet({...factSheet, [p.id]: Number(e.target.value)})} 
-                                                className="h-9"
-                                            />
-                                        </div>
-                                    ))}
+                                    {rawParameters.map((p) => {
+                                        const isAuto = p.dataSource === 'IMF (Auto)' || p.dataSource === 'World Bank (Auto)';
+                                        const isFilled = autoFilledFields.has(p.id);
+
+                                        return (
+                                            <div key={p.id} className="space-y-1 group">
+                                                <label className="text-xs font-medium text-muted-foreground flex justify-between">
+                                                    <span className="flex items-center gap-1">
+                                                        {p.name}
+                                                        {isAuto && (
+                                                            <TooltipProvider>
+                                                                <Tooltip>
+                                                                    <TooltipTrigger><Database className="w-3 h-3 text-green-500 opacity-60" /></TooltipTrigger>
+                                                                    <TooltipContent className="text-[10px]">Auto-sourced from {p.dataSource}</TooltipContent>
+                                                                </Tooltip>
+                                                            </TooltipProvider>
+                                                        )}
+                                                    </span>
+                                                    <span className="text-[10px] opacity-40 font-mono group-hover:opacity-100 transition-opacity">{p.slug}</span>
+                                                </label>
+                                                <div className="relative">
+                                                    <Input 
+                                                        type="number" 
+                                                        value={factSheet[p.id] || 0} 
+                                                        onChange={e => {
+                                                            setFactSheet({...factSheet, [p.id]: Number(e.target.value)})
+                                                            const newFilled = new Set(autoFilledFields)
+                                                            newFilled.delete(p.id)
+                                                            setAutoFilledFields(newFilled)
+                                                        }} 
+                                                        className={cn(
+                                                            "h-9 transition-colors",
+                                                            isFilled && "bg-green-50/50 border-green-200 focus:bg-background"
+                                                        )}
+                                                    />
+                                                    {isFilled && (
+                                                        <span className="absolute -top-4 right-0 text-[9px] text-green-600 font-bold bg-green-50 px-1 rounded">
+                                                            Auto-filled
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
                                     {rawParameters.length === 0 && (
                                         <div className="col-span-full py-8 text-center border rounded border-dashed">
                                             <p className="text-sm text-muted-foreground">No raw parameters defined in Parameter Master.</p>

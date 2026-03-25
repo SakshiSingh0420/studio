@@ -78,29 +78,25 @@ export function evaluateFormula(formula: string, context: Record<string, number>
  * Maps a quantitative value to a 1-5 score based on thresholds.
  * Thresholds: [T2, T3, T4, T5]
  */
-export function scoreMetric(value: number, config: ModelTransformation): number {
-  if (!config || !config.thresholds) return 1;
+export function calculateScore(value: number, thresholds: number[], inverse = false): number {
+  if (!thresholds || thresholds.length < 4) return 1;
   
-  const { thresholds, inverse } = config;
-  if (thresholds.length < 4) return 1;
-
-  // ENSURE NUMERICAL COMPARISON - Force cast thresholds to numbers
-  const numValue = Number(value) || 0;
+  const val = Number(value) || 0;
   const T = thresholds.map(t => Number(t));
 
   if (!inverse) {
-    // Normal logic: higher is better
-    if (numValue >= T[3]) return 5;
-    if (numValue >= T[2]) return 4;
-    if (numValue >= T[1]) return 3;
-    if (numValue >= T[0]) return 2;
+    // Higher is better (Standard)
+    if (val >= T[3]) return 5;
+    if (val >= T[2]) return 4;
+    if (val >= T[1]) return 3;
+    if (val >= T[0]) return 2;
     return 1;
   } else {
-    // Inverse logic: lower is better (e.g. Debt, Inflation)
-    if (numValue <= T[0]) return 5;
-    if (numValue <= T[1]) return 4;
-    if (numValue <= T[2]) return 3;
-    if (numValue <= T[3]) return 2;
+    // Lower is better (Inverse - e.g. Debt, Inflation)
+    if (val <= T[0]) return 5;
+    if (val <= T[1]) return 4;
+    if (val <= T[2]) return 3;
+    if (val <= T[3]) return 2;
     return 1;
   }
 }
@@ -119,11 +115,10 @@ export function runDynamicRating(
   const actualValuesUsed: Record<string, number> = {};
   const context: Record<string, number> = {};
 
-  // -----------------------------
-  // 1. Build context
-  // -----------------------------
+  // 1. Build initial context with all raw and derived inputs
   parameters.forEach(p => {
-    const val = Number(valuesById[p.id] ?? 0);
+    const rawVal = valuesById[p.id];
+    const val = (rawVal !== undefined && rawVal !== null) ? Number(rawVal) : 0;
 
     const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
     const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
@@ -137,87 +132,45 @@ export function runDynamicRating(
     }
   });
 
-  // -----------------------------
-  // 2. Core ratios
-  // -----------------------------
-  const compute = (idMatch: string[], fn: () => number) => {
-    const p = parameters.find(param => {
-      const key = (param.slug || param.id).toLowerCase();
-      return idMatch.some(t => key.includes(t));
-    });
-
-    if (p) {
-      const val = fn();
-      actualValuesUsed[p.id] = val;
-      context[p.id] = val;
-    }
-  };
-
-  compute(['debt_to_gdp'], () => {
-    const debt = context['government_debt'] || context['debt'] || 0;
-    const gdp = context['gdp'] || 1;
-    return (debt / gdp) * 100;
-  });
-
-  compute(['reserve_cover'], () => {
-    const res = context['fx_reserves'] || 0;
-    const imp = context['imports'] || 1;
-    return res / imp;
-  });
-
-  compute(['interest_to_revenue'], () => {
-    const i = context['interest_payments'] || 0;
-    const r = context['government_revenue'] || 1;
-    return (i / r) * 100;
-  });
-
-  // -----------------------------
-  // 3. Derived params
-  // -----------------------------
+  // 2. Perform Failsafe Derived Metric Calculations (Debt/GDP, etc.)
   parameters.filter(p => p.type === 'derived').forEach(p => {
-    if (actualValuesUsed[p.id] === undefined) {
-      const val = p.formula ? evaluateFormula(p.formula, context) : 0;
-      actualValuesUsed[p.id] = val;
-      context[p.id] = val;
+    const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
+    const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+    let val = 0;
+
+    if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
+      const debt = context['government_debt'] || context['debt'] || 0;
+      const gdp = context['gdp'] || context['nominal_gdp'] || 1;
+      val = (debt / (gdp || 1)) * 100;
+    } 
+    else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
+      const res = context['fx_reserves'] || context['reserves'] || 0;
+      const imp = context['imports'] || 1;
+      val = res / (imp || 1);
     }
+    else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
+      const int = context['interest_payments'] || context['interest'] || 0;
+      const rev = context['government_revenue'] || context['revenue'] || 1;
+      val = (int / (rev || 1)) * 100;
+    }
+    else if (p.formula) {
+      val = evaluateFormula(p.formula, context);
+    }
+
+    actualValuesUsed[p.id] = val;
+    context[p.id] = val;
+    context[slug] = val;
+    context[name] = val;
   });
 
-  // -----------------------------
-  // 4. SCORING FUNCTION (FIXED)
-  // -----------------------------
-  function calculateScore(value: number, thresholds: number[], inverse = false) {
-    if (!thresholds || thresholds.length === 0) return 1;
-
-    let score = 1;
-
-    for (let i = 0; i < thresholds.length; i++) {
-      if (inverse) {
-        if (value <= thresholds[i]) {
-          score = 5 - i;
-          break;
-        }
-      } else {
-        if (value >= thresholds[i]) {
-          score = i + 2;
-        }
-      }
-    }
-
-    return Math.max(1, Math.min(score, 5));
-  }
-
-  // -----------------------------
-  // 5. Apply scoring + weights
-  // -----------------------------
-  let totalImpact = 0;
+  // 3. Apply scoring + weights
+  let totalImpactPoints = 0;
 
   Object.keys(model.weights || {}).forEach(pid => {
     const val = actualValuesUsed[pid] ?? context[pid] ?? 0;
-
     const config = model.transformations?.[pid];
 
     if (!config) {
-      console.warn(`Missing transformation for ${pid}`);
       transformedScores[pid] = 1;
       weightedScores[pid] = 0;
       return;
@@ -227,19 +180,19 @@ export function runDynamicRating(
     transformedScores[pid] = score;
 
     const weight = Number(model.weights[pid]) || 0;
-
-    // ✅ CORRECT IMPACT
+    // Impact = score (1-5) * weight (0-100)
     const impact = score * weight;
 
     weightedScores[pid] = impact;
-    totalImpact += impact;
+    totalImpactPoints += impact;
   });
 
-  // -----------------------------
-  // 6. Final rating
-  // -----------------------------
-  const finalScore = totalImpact;
+  // 4. Final Normalized Score (0-100%)
+  // Max possible points = 5 (max score) * 100 (total weight sum) = 500
+  // Normalized score = (points / 500) * 100 = points / 5
+  const finalScore = totalImpactPoints / 5;
 
+  // 5. Map to Rating Scale
   const sortedMapping = [...scale.mapping].sort((a, b) => b.minScore - a.minScore);
   const ratingMatch = sortedMapping.find(m => finalScore >= m.minScore);
 

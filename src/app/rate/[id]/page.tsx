@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -27,7 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, Info, ArrowDownNarrowWide, ArrowUpNarrowWide } from "lucide-react"
+import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -85,7 +84,6 @@ export default function RatingExecutionPage() {
         load()
     }, [id])
 
-    // Live derived metrics for the input view
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
@@ -131,7 +129,6 @@ export default function RatingExecutionPage() {
     const handleRun = () => {
         if (!selectedModel || !selectedScale || !parameters.length) return
         
-        // Ensure we are sending absolute numerical values
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
@@ -150,19 +147,16 @@ export default function RatingExecutionPage() {
         setIsGenerating(true)
         
         const demoData: Record<string, number> = {
-            gdp: 3400000000000,
+            gdp: 3400, // USD Billion
             gdp_growth: 6.5,
             gdp_per_capita: 2400,
             inflation: 5.5,
-            debt: 3000000000000,
-            government_debt: 3000000000000,
-            revenue: 700000000000,
-            government_revenue: 700000000000,
-            interest: 200000000000,
-            interest_payments: 200000000000,
-            fx_reserves: 600000000000,
-            imports: 700000000000,
-            exports: 670000000000,
+            government_debt: 3000,
+            government_revenue: 700,
+            interest_payments: 200,
+            fx_reserves: 600,
+            imports: 700,
+            exports: 670,
             fiscal_balance: -6,
             political_stability: 0.5,
             governance_score: 0.6,
@@ -189,7 +183,7 @@ export default function RatingExecutionPage() {
         setFactSheet(nextFactSheet);
         setAutoFilledFields(filled);
         setIsGenerating(false);
-        toast({ title: "Demo Data Populated", description: "Harvested latest sovereign benchmarks for India." })
+        toast({ title: "Demo Data Populated", description: "Harvested latest sovereign benchmarks." })
     }
 
     const handleFinalize = async () => {
@@ -351,7 +345,7 @@ export default function RatingExecutionPage() {
                                     <TableBody>
                                         {Object.keys(selectedModel?.weights || {}).map((pid) => {
                                             const p = parameters.find(param => param.id === pid)
-                                            const val = calculation.actualValuesUsed[pid];
+                                            const val = calculation.actualValuesUsed[pid] ?? 0;
                                             const score = calculation.transformedScores[pid] || 1;
                                             const weight = Number(selectedModel?.weights[pid]) || 0;
                                             const impact = calculation.weightedScores[pid] || 0;
@@ -369,13 +363,13 @@ export default function RatingExecutionPage() {
                                                                 <TooltipTrigger asChild>
                                                                     <div className="flex flex-col items-center gap-1 cursor-help">
                                                                         <div className="flex items-center gap-1">
-                                                                            {transConfig.inverse ? <ArrowDownNarrowWide className="w-3 h-3 text-red-500" /> : <ArrowUpNarrowWide className="w-3 h-3 text-green-500" />}
+                                                                            {transConfig?.inverse ? <ArrowDownNarrowWide className="w-3 h-3 text-red-500" /> : <ArrowUpNarrowWide className="w-3 h-3 text-green-500" />}
                                                                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
-                                                                                {transConfig.inverse ? 'Inverse' : 'Standard'}
+                                                                                {transConfig?.inverse ? 'Inverse' : 'Standard'}
                                                                             </span>
                                                                         </div>
                                                                         <div className="flex gap-0.5">
-                                                                            {transConfig.thresholds.map((t, i) => (
+                                                                            {transConfig?.thresholds.map((t: number, i: number) => (
                                                                                 <div key={i} className="w-4 h-1 rounded-full bg-slate-200" title={`T${i+2}: ${t}`} />
                                                                             ))}
                                                                         </div>
@@ -384,7 +378,7 @@ export default function RatingExecutionPage() {
                                                                 <TooltipContent className="p-3 bg-slate-900 text-white border-none shadow-2xl">
                                                                     <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Threshold Benchmarks</p>
                                                                     <div className="grid grid-cols-4 gap-3 font-mono text-xs">
-                                                                        {transConfig.thresholds.map((t, i) => (
+                                                                        {transConfig?.thresholds.map((t: number, i: number) => (
                                                                             <div key={i} className="text-center">
                                                                                 <p className="text-[9px] text-slate-500 mb-1">SCORE {i+2}</p>
                                                                                 <p className="font-bold">{t}</p>

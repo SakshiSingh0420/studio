@@ -94,9 +94,22 @@ export interface Rating {
 
 export const saveRating = (r: any) => addDoc(collection(db, 'ratings'), { ...r, createdAt: serverTimestamp() });
 
+/**
+ * Fetches rating history for a specific country.
+ * Fixed: Removed server-side orderBy to avoid the need for composite indexes in the prototype.
+ * Sorting is now performed client-side.
+ */
 export const getRatingHistory = (countryId: string) => {
-  const q = query(collection(db, 'ratings'), where('countryId', '==', countryId), orderBy('createdAt', 'desc'));
-  return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() } as Rating)));
+  const q = query(collection(db, 'ratings'), where('countryId', '==', countryId));
+  return getDocs(q).then(s => {
+    const results = s.docs.map(d => ({ id: d.id, ...d.data() } as Rating));
+    // Client-side sort to avoid composite index requirement
+    return results.sort((a, b) => {
+      const dateA = a.createdAt?.toDate?.() || new Date(0);
+      const dateB = b.createdAt?.toDate?.() || new Date(0);
+      return dateB.getTime() - dateA.getTime();
+    });
+  });
 };
 
 export const updateRatingStatus = async (id: string, status: 'approved' | 'rejected', approvedBy?: string, reason?: string) => {

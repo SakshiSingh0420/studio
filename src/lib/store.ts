@@ -1,4 +1,5 @@
-import { collection, doc, setDoc, getDoc, getDocs, query, where, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc } from 'firebase/firestore';
+
+import { collection, doc, setDoc, getDoc, getDocs, query, where, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { Parameter, RatingModel, RatingScale } from './rating-engine';
 
@@ -49,9 +50,29 @@ export const saveScale = async (s: any) => {
 export const deleteScale = (id: string) => deleteDoc(doc(db, 'scales', id));
 
 // COUNTRIES
-export interface Country { id: string; name: string; region: string; incomeGroup: string; currency: string; population: number; gdp: number; }
+export interface Country { 
+  id: string; 
+  name: string; 
+  region: string; 
+  incomeGroup: 'Advanced' | 'Emerging' | 'Frontier'; 
+  currency: string; 
+  population: number; 
+  nominalGdp: number; 
+  gdpPerCapita: number;
+  inflation: number;
+  dataYear: number;
+  primaryDataSource: string;
+  equityIndex?: string;
+  bondYield10Y?: number;
+  fxRate?: number;
+  scenarioName?: string;
+  lastUpdated?: Timestamp;
+}
 export const getCountries = () => getAll<Country>('countries');
-export const addCountry = (c: any) => addDoc(collection(db, 'countries'), c);
+export const addCountry = (c: any) => addDoc(collection(db, 'countries'), {
+  ...c,
+  lastUpdated: serverTimestamp()
+});
 
 // RATINGS
 export interface Rating {

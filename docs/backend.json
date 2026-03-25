@@ -4,17 +4,26 @@
     "Country": {
       "title": "Country",
       "type": "object",
-      "description": "Represents a sovereign country.",
+      "description": "Represents a sovereign country with economic and market metadata.",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
         "region": { "type": "string" },
-        "incomeGroup": { "type": "string" },
+        "incomeGroup": { "type": "string", "enum": ["Advanced", "Emerging", "Frontier"] },
         "currency": { "type": "string" },
-        "population": { "type": "number" },
-        "gdp": { "type": "number" }
+        "population": { "type": "number", "description": "Population in millions" },
+        "nominalGdp": { "type": "number", "description": "Nominal GDP in USD billions" },
+        "gdpPerCapita": { "type": "number", "description": "GDP per capita in USD" },
+        "inflation": { "type": "number", "description": "Annual inflation rate percentage" },
+        "dataYear": { "type": "number", "description": "The year the data represents" },
+        "primaryDataSource": { "type": "string", "enum": ["IMF", "World Bank", "National Source", "Manual"] },
+        "equityIndex": { "type": "string", "description": "Representative equity index name" },
+        "bondYield10Y": { "type": "number", "description": "10-year government bond yield percentage" },
+        "fxRate": { "type": "number", "description": "Exchange rate vs USD" },
+        "scenarioName": { "type": "string", "description": "Current analytical cycle or scenario name" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "region"]
+      "required": ["name", "region", "dataYear", "nominalGdp", "population"]
     },
     "Parameter": {
       "title": "Parameter",

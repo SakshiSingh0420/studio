@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -26,9 +27,10 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, Info } from "lucide-react"
+import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, Info, ArrowDownNarrowWide, ArrowUpNarrowWide } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -340,6 +342,7 @@ export default function RatingExecutionPage() {
                                         <TableRow>
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5 px-12">Analytical Parameter</TableHead>
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Final Value</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5 text-center">Scoring Logic</TableHead>
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Trans. Score</TableHead>
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Weight</TableHead>
                                             <TableHead className="text-right font-black text-slate-900 uppercase text-xs py-5 px-12">Impact</TableHead>
@@ -352,12 +355,45 @@ export default function RatingExecutionPage() {
                                             const score = calculation.transformedScores[pid] || 1;
                                             const weight = Number(selectedModel?.weights[pid]) || 0;
                                             const impact = calculation.weightedScores[pid] || 0;
+                                            const transConfig = selectedModel?.transformations?.[pid] || { thresholds: [20, 40, 60, 80], inverse: false };
                                             
                                             return (
                                                 <TableRow key={pid} className="hover:bg-slate-50/50 transition-colors">
                                                     <TableCell className="font-bold text-slate-900 px-12 py-6 text-base">{p?.name || pid}</TableCell>
                                                     <TableCell className="font-black text-primary text-lg">
                                                         {val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <div className="flex flex-col items-center gap-1 cursor-help">
+                                                                        <div className="flex items-center gap-1">
+                                                                            {transConfig.inverse ? <ArrowDownNarrowWide className="w-3 h-3 text-red-500" /> : <ArrowUpNarrowWide className="w-3 h-3 text-green-500" />}
+                                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+                                                                                {transConfig.inverse ? 'Inverse' : 'Standard'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex gap-0.5">
+                                                                            {transConfig.thresholds.map((t, i) => (
+                                                                                <div key={i} className="w-4 h-1 rounded-full bg-slate-200" title={`T${i+2}: ${t}`} />
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent className="p-3 bg-slate-900 text-white border-none shadow-2xl">
+                                                                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Threshold Benchmarks</p>
+                                                                    <div className="grid grid-cols-4 gap-3 font-mono text-xs">
+                                                                        {transConfig.thresholds.map((t, i) => (
+                                                                            <div key={i} className="text-center">
+                                                                                <p className="text-[9px] text-slate-500 mb-1">SCORE {i+2}</p>
+                                                                                <p className="font-bold">{t}</p>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
                                                     </TableCell>
                                                     <TableCell className="font-bold text-slate-800">
                                                         <Badge variant="outline" className="text-base font-black border-2 px-3 py-1 bg-white">

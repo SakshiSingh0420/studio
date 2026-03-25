@@ -1,4 +1,3 @@
-
 "use client"
 
 import {
@@ -8,11 +7,9 @@ import {
   Settings,
   ShieldCheck,
   History,
-  PlusCircle,
   Database,
   Layers,
   Scale,
-  Zap,
 } from "lucide-react"
 import {
   Sidebar,
@@ -32,7 +29,6 @@ import { usePathname } from "next/navigation"
 const items = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Countries", url: "/countries", icon: Globe },
-  { title: "Execute Rating", url: "/rate", icon: PlusCircle },
   { title: "Rating History", url: "/ratings", icon: History },
   { title: "Committee Approval", url: "/approvals", icon: ShieldCheck },
 ]

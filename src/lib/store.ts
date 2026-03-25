@@ -73,6 +73,7 @@ export const addCountry = (c: any) => addDoc(collection(db, 'countries'), {
   ...c,
   lastUpdated: serverTimestamp()
 });
+export const deleteCountry = (id: string) => deleteDoc(doc(db, 'countries', id));
 
 // RATINGS
 export interface Rating {

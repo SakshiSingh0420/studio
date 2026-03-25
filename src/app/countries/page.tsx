@@ -2,7 +2,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Search, MapPin, Loader2, Calendar, Database, TrendingUp, DollarSign, Activity, Info } from "lucide-react"
+import { Plus, Search, MapPin, Loader2, Calendar, Database, TrendingUp, DollarSign, Activity, Info, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -27,15 +27,28 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { addCountry, Country } from "@/lib/store"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { addCountry, Country, deleteCountry, getRatingHistory } from "@/lib/store"
 import { Badge } from "@/components/ui/badge"
 import { useCollection, useMemoFirebase, useFirestore } from "@/firebase"
 import { collection } from "firebase/firestore"
 import Link from "next/link"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useToast } from "@/hooks/use-toast"
 
 export default function CountriesPage() {
   const db = useFirestore();
+  const { toast } = useToast();
   const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
   const { data: countries, isLoading } = useCollection<Country>(countriesQuery);
 
@@ -80,6 +93,27 @@ export default function CountriesPage() {
       fxRate: 1,
       scenarioName: "Base Case 2024"
     })
+    toast({ title: "Sovereign Registered", description: `${newCountry.name} has been added to the registry.` });
+  }
+
+  const handleDelete = async (countryId: string, countryName: string) => {
+    try {
+      const history = await getRatingHistory(countryId);
+      if (history.length > 0) {
+        toast({ 
+          title: "Deletion Prohibited", 
+          description: "Cannot delete country with existing rating history. Clear history first.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      await deleteCountry(countryId);
+      toast({ title: "Sovereign Removed", description: `${countryName} has been deleted from the registry.` });
+    } catch (error) {
+      console.error("Delete Error:", error);
+      toast({ title: "Error", description: "Could not complete the deletion process.", variant: "destructive" });
+    }
   }
 
   const filtered = (countries || []).filter(c => 
@@ -211,7 +245,7 @@ export default function CountriesPage() {
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map(country => (
-          <Card key={country.id} className="metric-card overflow-hidden border-2 hover:border-primary transition-all group">
+          <Card key={country.id} className="metric-card overflow-hidden border-2 hover:border-primary transition-all group relative">
             <CardHeader className="bg-slate-50/50 pb-4 border-b">
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
@@ -222,7 +256,35 @@ export default function CountriesPage() {
                     <span>{country.incomeGroup} Market</span>
                   </div>
                 </div>
-                <Badge variant="outline" className="font-mono bg-white border-2">{country.currency}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="font-mono bg-white border-2">{country.currency}</Badge>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Sovereign Profile?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to remove <b>{country.name}</b> from the registry? This action is permanent. 
+                          <br/><br/>
+                          Note: Deletion is only allowed if no rating history exists for this country.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                          onClick={() => handleDelete(country.id, country.name)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Delete Permanently
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="pt-6 space-y-6">

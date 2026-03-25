@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2 } from "lucide-react"
+import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, Info } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
@@ -129,6 +129,7 @@ export default function RatingExecutionPage() {
     const handleRun = () => {
         if (!selectedModel || !selectedScale || !parameters.length) return
         
+        // Ensure we are sending absolute numerical values
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
@@ -349,7 +350,7 @@ export default function RatingExecutionPage() {
                                             const p = parameters.find(param => param.id === pid)
                                             const val = calculation.actualValuesUsed[pid] ?? 0;
                                             const score = calculation.transformedScores[pid] || 1;
-                                            const weight = selectedModel?.weights[pid] || 0;
+                                            const weight = Number(selectedModel?.weights[pid]) || 0;
                                             const impact = calculation.weightedScores[pid] || 0;
                                             
                                             return (

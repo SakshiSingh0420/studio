@@ -79,27 +79,28 @@ export function evaluateFormula(formula: string, context: Record<string, number>
  * Thresholds: [T2, T3, T4, T5]
  */
 export function scoreMetric(value: number, config: ModelTransformation): number {
-  const { thresholds, inverse } = config;
+  if (!config || !config.thresholds) return 1;
   
-  if (!thresholds || thresholds.length < 4) {
-    return 1;
-  }
+  const { thresholds, inverse } = config;
+  if (thresholds.length < 4) return 1;
 
+  // ENSURE NUMERICAL COMPARISON - Force cast thresholds to numbers
   const numValue = Number(value) || 0;
+  const T = thresholds.map(t => Number(t));
 
   if (!inverse) {
     // Normal logic: higher is better
-    if (numValue >= thresholds[3]) return 5;
-    if (numValue >= thresholds[2]) return 4;
-    if (numValue >= thresholds[1]) return 3;
-    if (numValue >= thresholds[0]) return 2;
+    if (numValue >= T[3]) return 5;
+    if (numValue >= T[2]) return 4;
+    if (numValue >= T[1]) return 3;
+    if (numValue >= T[0]) return 2;
     return 1;
   } else {
-    // Inverse logic: lower is better
-    if (numValue <= thresholds[0]) return 5;
-    if (numValue <= thresholds[1]) return 4;
-    if (numValue <= thresholds[2]) return 3;
-    if (numValue <= thresholds[3]) return 2;
+    // Inverse logic: lower is better (e.g. Debt, Inflation)
+    if (numValue <= T[0]) return 5;
+    if (numValue <= T[1]) return 4;
+    if (numValue <= T[2]) return 3;
+    if (numValue <= T[3]) return 2;
     return 1;
   }
 }
@@ -155,28 +156,26 @@ export function runDynamicRating(
     return 0;
   };
 
-  // Debt to GDP
+  // Hardcoded ratios for demo accuracy
   computeSpecificRatio(['debt_to_gdp', 'debt_gdp'], () => {
-    const debt = context['government_debt'] || context['debt'] || context['debt_to_gdp_raw'] || 0;
-    const gdp = context['gdp'] || context['nominal_gdp'] || context['nominal_gdp_usd_bn'] || 1;
+    const debt = context['government_debt'] || context['debt'] || 0;
+    const gdp = context['gdp'] || context['nominal_gdp'] || 1;
     return (debt / (gdp || 1)) * 100;
   });
 
-  // Reserve Cover
   computeSpecificRatio(['reserve_cover', 'fx_reserves_imports'], () => {
     const res = context['fx_reserves'] || context['reserves'] || 0;
     const imp = context['imports'] || 1;
     return res / (imp || 1);
   });
 
-  // Interest to Revenue
   computeSpecificRatio(['interest_to_revenue', 'interest_revenue'], () => {
     const int = context['interest_payments'] || context['interest'] || 0;
     const rev = context['government_revenue'] || context['revenue'] || 1;
     return (int / (rev || 1)) * 100;
   });
 
-  // 3. Phase 2: Calculate remaining derived parameters via formula engine
+  // 3. Phase 2: Calculate remaining derived parameters
   parameters.filter(p => p.type === 'derived').forEach(p => {
     if (actualValuesUsed[p.id] === undefined) {
       const result = p.formula ? evaluateFormula(p.formula, context) : 0;
@@ -193,21 +192,25 @@ export function runDynamicRating(
     const p = parameters.find(param => param.id === pid);
     if (!p) return;
 
-    const val = actualValuesUsed[pid] ?? 0;
+    // GET THE FINAL CALCULATED OR RAW VALUE
+    const val = actualValuesUsed[pid] ?? context[pid] ?? 0;
+    
+    // GET TRANSFORMATION CONFIG (Fallback to safe defaults)
     const config = model.transformations?.[pid] || { thresholds: [20, 40, 60, 80], inverse: false };
     
-    // Calculate 1-5 Score
+    // CALCULATE 1-5 SCORE
     const score = scoreMetric(val, config);
     transformedScores[pid] = score;
 
-    // Impact = (Score / 5) * Weight
-    const weight = model.weights[pid] || 0;
+    // CALCULATE IMPACT: (Score / 5) * Weight
+    const weight = Number(model.weights[pid]) || 0;
     const impact = (score / 5) * weight;
+    
     weightedScores[pid] = impact;
     totalImpact += impact;
   });
 
-  // 5. Final Mapping
+  // 5. Final Mapping to Rating Scale
   const finalScore = totalImpact;
   const sortedMapping = [...scale.mapping].sort((a, b) => b.minScore - a.minScore);
   const ratingMatch = sortedMapping.find(m => finalScore >= m.minScore);

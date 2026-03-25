@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Save, Layers, Settings2, AlertCircle, CheckCircle2, Search, Filter, Zap, ChevronRight, Info, Trash2 } from "lucide-react"
+import { Plus, Save, Layers, Settings2, AlertCircle, CheckCircle2, Search, Filter, Zap, ChevronRight, Info, Trash2, Sparkles, BrainCircuit } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
@@ -27,12 +27,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
 const CATEGORIES = ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] as const;
 
 const TEMPLATES: Record<string, Partial<RatingModel>> = {
   "Advanced Economy": {
-    weights: { /* Logic would map IDs here, simplified for demo structure */ },
+    weights: {},
     version: "1.0",
     name: "Standard Advanced Model"
   },
@@ -53,6 +62,8 @@ export default function ModelBuilderPage() {
   const [params, setParams] = useState<Parameter[]>([])
   const [selectedModel, setSelectedModel] = useState<Partial<RatingModel> | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
+  const [isAdvisorOpen, setIsAdvisorOpen] = useState(false)
+  const [advisorContext, setAdvisorContext] = useState({ classification: "Emerging", scenario: "Baseline" })
   const { toast } = useToast()
 
   const load = async () => {
@@ -89,10 +100,8 @@ export default function ModelBuilderPage() {
       return;
     }
 
-    // 1. Backup before save
     const backup = { ...selectedModel };
 
-    // 2. Safe Data Cleaning Function
     const cleanObject = (obj: any): any => {
         if (!obj || typeof obj !== 'object') return obj;
         if (Array.isArray(obj)) {
@@ -113,20 +122,14 @@ export default function ModelBuilderPage() {
 
     try {
         const cleanedData = cleanObject(selectedModel);
-        
-        // 3. Save operation (returns the ID, ensuring we don't save 'id' inside the doc)
         const savedId = await saveModel(cleanedData);
-        
-        // 4. Update state with ID if it was a new model, but DO NOT reset form
         if (!selectedModel.id) {
             setSelectedModel(prev => prev ? { ...prev, id: savedId } : null);
         }
-        
         await load();
         toast({ title: "Analytical Framework Finalized" });
     } catch (error) {
         console.error("Firestore Save Error:", error);
-        // 5. Restore previous state automatically if save fails
         setSelectedModel(backup);
         toast({ 
             title: "Save Failed", 
@@ -178,20 +181,121 @@ export default function ModelBuilderPage() {
           setSelectedModel({
               ...selectedModel,
               ...template,
-              id: selectedModel?.id // Preserve ID if editing
+              id: selectedModel?.id
           });
           toast({ title: `Applied ${name} Template` });
       }
   }
+
+  const aiRecommendation = useMemo(() => {
+    const { classification, scenario } = advisorContext;
+    let model = "No exact model found. Suggested to create a new model.";
+    let paramsList = ["GDP Growth", "Inflation", "Debt to GDP", "FX Reserves", "Governance Score"];
+    let reason = `${classification} economy with ${scenario} scenario context.`;
+
+    if (classification === "Advanced") model = "Standard Advanced Model";
+    else if (classification === "Emerging") model = "Emerging Market Framework";
+    else if (classification === "Frontier") model = "Frontier Risk Model";
+
+    const focusParams = [];
+    if (scenario === "Stress") {
+      focusParams.push("Debt to GDP (Higher weight)", "Inflation (Sensitivity)", "External Risk (Liquidity focus)");
+    } else {
+      focusParams.push("Balanced Weight Distribution");
+    }
+
+    return { model, reason, paramsList, focusParams };
+  }, [advisorContext]);
 
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary">Model Builder</h1>
-          <p className="text-muted-foreground mt-1">Configure weighted analytical frameworks and scoring transformations.</p>
+          <p className="text-muted-foreground mt-1 text-lg">Configure weighted analytical frameworks and scoring transformations.</p>
         </div>
         <div className="flex gap-2">
+            <Dialog open={isAdvisorOpen} onOpenChange={setIsAdvisorOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="border-primary/50 text-primary hover:bg-primary/5">
+                  <Sparkles className="w-4 h-4 mr-2" /> AI Model Advisor
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <BrainCircuit className="w-5 h-5 text-primary" />
+                    Sovereign Model Advisor
+                  </DialogTitle>
+                  <DialogDescription>
+                    Get intelligent framework suggestions based on specific geopolitical and economic contexts.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Market Classification</label>
+                      <Select value={advisorContext.classification} onValueChange={v => setAdvisorContext({...advisorContext, classification: v})}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Advanced">Advanced</SelectItem>
+                          <SelectItem value="Emerging">Emerging</SelectItem>
+                          <SelectItem value="Frontier">Frontier</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Scenario Cycle</label>
+                      <Select value={advisorContext.scenario} onValueChange={v => setAdvisorContext({...advisorContext, scenario: v})}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Baseline">Baseline</SelectItem>
+                          <SelectItem value="Stress">Stress Scenario</SelectItem>
+                          <SelectItem value="Optimistic">Optimistic</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <Card className="bg-primary/5 border-primary/20">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center gap-2 text-primary">
+                        <Sparkles className="w-3 h-3" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">AI Recommendation</span>
+                      </div>
+                      <CardTitle className="text-lg font-bold">{aiRecommendation.model}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {aiRecommendation.reason} Based on this profile, we recommend the following framework parameters:
+                      </p>
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Core Parameters</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {aiRecommendation.paramsList.map(p => (
+                            <Badge key={p} variant="outline" className="text-[10px] font-medium bg-white">{p}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Analytical Focus</p>
+                        <ul className="text-xs space-y-1">
+                          {aiRecommendation.focusParams.map(f => (
+                            <li key={f} className="flex items-center gap-2 text-slate-700">
+                              <ChevronRight className="w-3 h-3 text-primary" /> {f}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsAdvisorOpen(false)} className="w-full">Dismiss Advisor</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             <Select onValueChange={applyTemplate}>
                 <SelectTrigger className="w-[200px] bg-muted/50">
                     <Zap className="w-4 h-4 mr-2 text-yellow-500" />

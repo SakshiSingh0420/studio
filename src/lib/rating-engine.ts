@@ -77,46 +77,31 @@ export function evaluateFormula(formula: string, context: Record<string, number>
 /**
  * Maps a quantitative value to a 1-5 score based on thresholds.
  * Thresholds: [T2, T3, T4, T5]
- * 
- * Logic flow:
- * Normal (Inverse: OFF): 
- * Score 5: >= T5
- * Score 4: >= T4
- * Score 3: >= T3
- * Score 2: >= T2
- * Score 1: < T2
- * 
- * Inverse (Inverse: ON):
- * Score 5: <= T2
- * Score 4: <= T3
- * Score 3: <= T4
- * Score 2: <= T5
- * Score 1: > T5
  */
 export function scoreMetric(value: number, config: ModelTransformation): number {
   const { thresholds, inverse } = config;
   
-  // Safety check for malformed thresholds
   if (!thresholds || thresholds.length < 4) {
-    console.warn("Invalid thresholds provided for scoring. Defaulting to Score 1.");
     return 1;
   }
 
+  const numValue = Number(value) || 0;
+
   if (!inverse) {
-    // Normal logic: higher is better (e.g. GDP Growth, Reserves)
-    if (value >= thresholds[3]) return 5;
-    if (value >= thresholds[2]) return 4;
-    if (value >= thresholds[1]) return 3;
-    if (value >= thresholds[0]) return 2;
+    // Normal logic: higher is better
+    if (numValue >= thresholds[3]) return 5;
+    if (numValue >= thresholds[2]) return 4;
+    if (numValue >= thresholds[1]) return 3;
+    if (numValue >= thresholds[0]) return 2;
     return 1;
-  } 
-  
-  // Inverse logic: lower is better (e.g. Debt/GDP, Inflation)
-  if (value <= thresholds[0]) return 5;
-  if (value <= thresholds[1]) return 4;
-  if (value <= thresholds[2]) return 3;
-  if (value <= thresholds[3]) return 2;
-  return 1;
+  } else {
+    // Inverse logic: lower is better
+    if (numValue <= thresholds[0]) return 5;
+    if (numValue <= thresholds[1]) return 4;
+    if (numValue <= thresholds[2]) return 3;
+    if (numValue <= thresholds[3]) return 2;
+    return 1;
+  }
 }
 
 /**
@@ -128,116 +113,110 @@ export function runDynamicRating(
   scale: RatingScale,
   parameters: Parameter[]
 ) {
-  console.log("--- ANALYTICAL PIPELINE START ---");
-  console.log("Input Parameters Captured:", valuesById);
-
   const transformedScores: Record<string, number> = {};
   const weightedScores: Record<string, number> = {};
   const actualValuesUsed: Record<string, number> = {};
   const context: Record<string, number> = {};
   
-  // PHASE 1: Build variable context for formulas (ID, Slug, and Normalized Name)
+  // 1. Build initial variable context from all raw inputs
   parameters.forEach(p => {
-    const val = valuesById[p.id] ?? 0;
+    const rawVal = valuesById[p.id];
+    const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+    
+    // Index by ID, Slug, and Name Slugs for maximum formula compatibility
     const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
     const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
     
+    context[p.id] = val;
     context[slugKey] = val;
     context[nameKey] = val;
-    context[p.id.toLowerCase()] = val;
     
     if (p.type === 'raw') {
       actualValuesUsed[p.id] = val;
     }
   });
 
-  // PHASE 2: Forced Calculations for Mandatory Ratios
-  const computeDerived = (targetKeys: string[], logic: (ctx: Record<string, number>) => number) => {
+  // 2. Phase 1: Explicitly calculate core sovereign ratios
+  const computeSpecificRatio = (targets: string[], logic: () => number) => {
     const p = parameters.find(param => {
-      const slug = (param.slug || "").toLowerCase().replace(/[-\s]/g, '_');
-      const name = (param.name || "").toLowerCase().replace(/[\s-]/g, '_');
-      return targetKeys.some(tk => slug.includes(tk) || name.includes(tk) || param.id.toLowerCase().includes(tk));
+      const s = (param.slug || "").toLowerCase().replace(/[-\s]/g, '_');
+      const n = (param.name || "").toLowerCase().replace(/[\s-]/g, '_');
+      return targets.some(t => s.includes(t) || n.includes(t) || param.id.toLowerCase().includes(t));
     });
-    
-    if (p) {
-        // Build local context for conceptual mapping
-        const localCtx: Record<string, number> = {
-            debt: context['government_debt'] || context['debt'] || 0,
-            gdp: context['gdp'] || context['nominal_gdp'] || 1,
-            res: context['fx_reserves'] || context['reserves'] || 0,
-            imp: context['imports'] || 1,
-            interest: context['interest_payments'] || context['interest'] || 0,
-            revenue: context['government_revenue'] || context['revenue'] || 1
-        };
 
-      const result = logic(localCtx);
+    if (p) {
+      const result = logic();
       actualValuesUsed[p.id] = result;
-      
-      // Update global context for other formulas
+      context[p.id] = result;
       const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
       context[slugKey] = result;
-      console.log(`Derived [${p.name}] Value:`, result.toFixed(2));
+      return result;
     }
+    return 0;
   };
 
-  // 1. Debt to GDP: (Government Debt / GDP) * 100
-  computeDerived(['debt_to_gdp', 'debt_gdp'], (c) => (c.debt / (c.gdp || 1)) * 100);
+  // Debt to GDP
+  computeSpecificRatio(['debt_to_gdp', 'debt_gdp'], () => {
+    const debt = context['government_debt'] || context['debt'] || context['debt_to_gdp_raw'] || 0;
+    const gdp = context['gdp'] || context['nominal_gdp'] || context['nominal_gdp_usd_bn'] || 1;
+    return (debt / (gdp || 1)) * 100;
+  });
 
-  // 2. Reserve Cover: FX Reserves / Imports
-  computeDerived(['reserve_cover', 'fx_reserves_imports'], (c) => (c.res / (c.imp || 1)));
+  // Reserve Cover
+  computeSpecificRatio(['reserve_cover', 'fx_reserves_imports'], () => {
+    const res = context['fx_reserves'] || context['reserves'] || 0;
+    const imp = context['imports'] || 1;
+    return res / (imp || 1);
+  });
 
-  // 3. Interest to Revenue: (Interest Payments / Government Revenue) * 100
-  computeDerived(['interest_to_revenue', 'interest_revenue'], (c) => (c.interest / (c.revenue || 1)) * 100);
+  // Interest to Revenue
+  computeSpecificRatio(['interest_to_revenue', 'interest_revenue'], () => {
+    const int = context['interest_payments'] || context['interest'] || 0;
+    const rev = context['government_revenue'] || context['revenue'] || 1;
+    return (int / (rev || 1)) * 100;
+  });
 
-  // PHASE 3: Generic Formula Evaluation for remaining derived parameters
-  parameters.filter(p => p.type === 'derived' && p.formula).forEach(p => {
-    if (actualValuesUsed[p.id] === undefined || actualValuesUsed[p.id] === 0) {
-      const result = evaluateFormula(p.formula!, context);
+  // 3. Phase 2: Calculate remaining derived parameters via formula engine
+  parameters.filter(p => p.type === 'derived').forEach(p => {
+    if (actualValuesUsed[p.id] === undefined) {
+      const result = p.formula ? evaluateFormula(p.formula, context) : 0;
       actualValuesUsed[p.id] = result;
+      context[p.id] = result;
       const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
       context[slugKey] = result;
     }
   });
 
-  // PHASE 4: Threshold-Based Scoring (1-5) and Weight Application
-  Object.keys(model.weights).forEach((paramId) => {
-    const p = parameters.find(param => param.id === paramId);
+  // 4. Scoring and Weight Application
+  let totalImpact = 0;
+  Object.keys(model.weights || {}).forEach((pid) => {
+    const p = parameters.find(param => param.id === pid);
     if (!p) return;
 
-    const val = actualValuesUsed[paramId] ?? 0;
+    const val = actualValuesUsed[pid] ?? 0;
+    const config = model.transformations?.[pid] || { thresholds: [20, 40, 60, 80], inverse: false };
     
-    // FETCH CONFIG FROM MODEL (Falling back to conservative defaults if missing)
-    const trans = model.transformations?.[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
-    
-    // ASSIGN 1-5 SCORE
-    const score = scoreMetric(val, trans);
-    transformedScores[paramId] = score;
+    // Calculate 1-5 Score
+    const score = scoreMetric(val, config);
+    transformedScores[pid] = score;
 
-    // IMPACT: (Score / 5) * Weight
-    const weight = model.weights[paramId] || 0;
+    // Impact = (Score / 5) * Weight
+    const weight = model.weights[pid] || 0;
     const impact = (score / 5) * weight;
-    weightedScores[paramId] = impact;
-
-    console.log(`Scoring [${p.name}]: Value=${val.toFixed(2)}, Thresh=[${trans.thresholds}], Inverse=${trans.inverse} -> Score=${score}, Impact=${impact.toFixed(2)}`);
+    weightedScores[pid] = impact;
+    totalImpact += impact;
   });
 
-  // PHASE 5: Aggregation and Final Rating Mapping
-  const finalAggregateScore = Object.values(weightedScores).reduce((a, b) => a + b, 0);
-  
-  // Sort scale by minScore descending to find the highest matching bucket
+  // 5. Final Mapping
+  const finalScore = totalImpact;
   const sortedMapping = [...scale.mapping].sort((a, b) => b.minScore - a.minScore);
-  const mapping = sortedMapping.find(m => finalAggregateScore >= m.minScore);
-
-  console.log("FINAL QUANTITATIVE RESULTS:");
-  console.log("Aggregate Score:", finalAggregateScore.toFixed(2) + "%");
-  console.log("Implied Rating:", mapping?.rating || "NR");
-  console.log("--- ANALYTICAL PIPELINE END ---");
+  const ratingMatch = sortedMapping.find(m => finalScore >= m.minScore);
 
   return {
     transformedScores,
     weightedScores,
-    finalScore: finalAggregateScore,
-    initialRating: mapping?.rating || "NR",
+    finalScore,
+    initialRating: ratingMatch?.rating || "NR",
     actualValuesUsed
   };
 }

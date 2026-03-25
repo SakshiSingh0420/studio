@@ -87,20 +87,15 @@ export default function RatingExecutionPage() {
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
-        // 1. Build context from raw values for immediate feedback
         const context: Record<string, number> = {}; 
         parameters.forEach(p => {
-            if (p.type === 'raw') {
-                const rawVal = factSheet[p.id];
-                const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-                
-                const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
-                const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-                
-                context[slugKey] = val;
-                context[nameKey] = val;
-                context[p.id.toLowerCase()] = val;
-            }
+            const rawVal = factSheet[p.id];
+            const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+            const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
+            const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+            context[p.id] = val;
+            context[slugKey] = val;
+            context[nameKey] = val;
         });
         
         const results: Record<string, number> = {};
@@ -108,21 +103,20 @@ export default function RatingExecutionPage() {
             const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
             const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             
-            // Explicit logic for core ratios
-            if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp') || name.includes('debt_gdp')) {
+            if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
-                results[p.id] = (debt / gdp) * 100;
+                results[p.id] = (debt / (gdp || 1)) * 100;
             } 
-            else if (slug.includes('reserve_cover') || name.includes('reserve_cover') || name.includes('fx_reserves_imports')) {
+            else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
                 const res = context['fx_reserves'] || context['reserves'] || 0;
                 const imp = context['imports'] || 1;
-                results[p.id] = res / imp;
+                results[p.id] = res / (imp || 1);
             }
-            else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue') || name.includes('interest_revenue')) {
+            else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
                 const int = context['interest_payments'] || context['interest'] || 0;
                 const rev = context['government_revenue'] || context['revenue'] || 1;
-                results[p.id] = (int / rev) * 100;
+                results[p.id] = (int / (rev || 1)) * 100;
             }
             else if (p.formula) {
                 results[p.id] = evaluateFormula(p.formula, context);
@@ -135,16 +129,12 @@ export default function RatingExecutionPage() {
     const handleRun = () => {
         if (!selectedModel || !selectedScale || !parameters.length) return
         
-        // Final capture of all raw inputs
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
-            if (p.type === 'raw') {
-                const rawVal = factSheet[p.id];
-                numericInputs[p.id] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-            }
+            const rawVal = factSheet[p.id];
+            numericInputs[p.id] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
         });
 
-        // Run full quantitative pipeline
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
         setCalculation(result)
         setStep("calculate")
@@ -156,7 +146,6 @@ export default function RatingExecutionPage() {
         if (!country) return;
         setIsGenerating(true)
         
-        // India-Specific Economic Profile (Latest Approximate Benchmarks)
         const demoData: Record<string, number> = {
             gdp: 3400000000000,
             gdp_growth: 6.5,
@@ -168,7 +157,6 @@ export default function RatingExecutionPage() {
             government_revenue: 700000000000,
             interest: 200000000000,
             interest_payments: 200000000000,
-            interest_to_revenue: 28.57,
             fx_reserves: 600000000000,
             imports: 700000000000,
             exports: 670000000000,
@@ -188,9 +176,7 @@ export default function RatingExecutionPage() {
             if (p.type !== 'raw') return;
             const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
             const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-            
             const val = demoData[slug] ?? demoData[name] ?? demoData[p.id];
-            
             if (val !== undefined) {
                 nextFactSheet[p.id] = val;
                 filled.add(p.id);
@@ -200,7 +186,6 @@ export default function RatingExecutionPage() {
         setFactSheet(nextFactSheet);
         setAutoFilledFields(filled);
         setIsGenerating(false);
-        
         toast({ title: "Demo Data Populated", description: "Harvested latest sovereign benchmarks for India." })
     }
 
@@ -309,9 +294,9 @@ export default function RatingExecutionPage() {
                                         const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
                                         let formulaDisplay = p.formula || 'Custom Logic';
                                         
-                                        if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp') || name.includes('debt_gdp')) formulaDisplay = '(Government Debt / GDP) × 100';
-                                        if (slug.includes('reserve_cover') || name.includes('reserve_cover') || name.includes('fx_reserves_imports')) formulaDisplay = 'FX Reserves / Imports';
-                                        if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue') || name.includes('interest_revenue')) formulaDisplay = '(Interest / Revenue) × 100';
+                                        if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) formulaDisplay = '(Gov Debt / GDP) × 100';
+                                        if (slug.includes('reserve_cover') || name.includes('reserve_cover')) formulaDisplay = 'FX Reserves / Imports';
+                                        if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) formulaDisplay = '(Interest / Revenue) × 100';
 
                                         return (
                                             <div key={p.id} className="p-8 bg-white rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between transition-all hover:border-primary/30 hover:shadow-md group">
@@ -363,6 +348,10 @@ export default function RatingExecutionPage() {
                                         {Object.keys(selectedModel?.weights || {}).map((pid) => {
                                             const p = parameters.find(param => param.id === pid)
                                             const val = calculation.actualValuesUsed[pid] ?? 0;
+                                            const score = calculation.transformedScores[pid] || 1;
+                                            const weight = selectedModel?.weights[pid] || 0;
+                                            const impact = calculation.weightedScores[pid] || 0;
+                                            
                                             return (
                                                 <TableRow key={pid} className="hover:bg-slate-50/50 transition-colors">
                                                     <TableCell className="font-bold text-slate-900 px-12 py-6 text-base">{p?.name || pid}</TableCell>
@@ -371,12 +360,12 @@ export default function RatingExecutionPage() {
                                                     </TableCell>
                                                     <TableCell className="font-bold text-slate-800">
                                                         <Badge variant="outline" className="text-base font-black border-2 px-3 py-1 bg-white">
-                                                            {calculation.transformedScores[pid] || 1}
+                                                            {score}
                                                         </Badge>
                                                     </TableCell>
-                                                    <TableCell className="text-slate-700 font-bold text-base">{selectedModel?.weights[pid]}%</TableCell>
+                                                    <TableCell className="text-slate-700 font-bold text-base">{weight}%</TableCell>
                                                     <TableCell className="text-right font-black text-slate-900 px-12 text-lg">
-                                                        {(calculation.weightedScores[pid] || 0).toFixed(2)}
+                                                        {impact.toFixed(2)}
                                                     </TableCell>
                                                 </TableRow>
                                             )

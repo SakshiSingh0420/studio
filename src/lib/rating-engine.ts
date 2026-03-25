@@ -118,100 +118,128 @@ export function runDynamicRating(
   const weightedScores: Record<string, number> = {};
   const actualValuesUsed: Record<string, number> = {};
   const context: Record<string, number> = {};
-  
-  // 1. Build initial variable context from all raw inputs
+
+  // -----------------------------
+  // 1. Build context
+  // -----------------------------
   parameters.forEach(p => {
-    const rawVal = valuesById[p.id];
-    const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-    
-    // Index by ID, Slug, and Name Slugs for maximum formula compatibility
+    const val = Number(valuesById[p.id] ?? 0);
+
     const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
     const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-    
+
     context[p.id] = val;
     context[slugKey] = val;
     context[nameKey] = val;
-    
+
     if (p.type === 'raw') {
       actualValuesUsed[p.id] = val;
     }
   });
 
-  // 2. Phase 1: Explicitly calculate core sovereign ratios
-  const computeSpecificRatio = (targets: string[], logic: () => number) => {
+  // -----------------------------
+  // 2. Core ratios
+  // -----------------------------
+  const compute = (idMatch: string[], fn: () => number) => {
     const p = parameters.find(param => {
-      const s = (param.slug || "").toLowerCase().replace(/[-\s]/g, '_');
-      const n = (param.name || "").toLowerCase().replace(/[\s-]/g, '_');
-      return targets.some(t => s.includes(t) || n.includes(t) || param.id.toLowerCase().includes(t));
+      const key = (param.slug || param.id).toLowerCase();
+      return idMatch.some(t => key.includes(t));
     });
 
     if (p) {
-      const result = logic();
-      actualValuesUsed[p.id] = result;
-      context[p.id] = result;
-      const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
-      context[slugKey] = result;
-      return result;
+      const val = fn();
+      actualValuesUsed[p.id] = val;
+      context[p.id] = val;
     }
-    return 0;
   };
 
-  // Hardcoded ratios for demo accuracy
-  computeSpecificRatio(['debt_to_gdp', 'debt_gdp'], () => {
+  compute(['debt_to_gdp'], () => {
     const debt = context['government_debt'] || context['debt'] || 0;
-    const gdp = context['gdp'] || context['nominal_gdp'] || 1;
-    return (debt / (gdp || 1)) * 100;
+    const gdp = context['gdp'] || 1;
+    return (debt / gdp) * 100;
   });
 
-  computeSpecificRatio(['reserve_cover', 'fx_reserves_imports'], () => {
-    const res = context['fx_reserves'] || context['reserves'] || 0;
+  compute(['reserve_cover'], () => {
+    const res = context['fx_reserves'] || 0;
     const imp = context['imports'] || 1;
-    return res / (imp || 1);
+    return res / imp;
   });
 
-  computeSpecificRatio(['interest_to_revenue', 'interest_revenue'], () => {
-    const int = context['interest_payments'] || context['interest'] || 0;
-    const rev = context['government_revenue'] || context['revenue'] || 1;
-    return (int / (rev || 1)) * 100;
+  compute(['interest_to_revenue'], () => {
+    const i = context['interest_payments'] || 0;
+    const r = context['government_revenue'] || 1;
+    return (i / r) * 100;
   });
 
-  // 3. Phase 2: Calculate remaining derived parameters
+  // -----------------------------
+  // 3. Derived params
+  // -----------------------------
   parameters.filter(p => p.type === 'derived').forEach(p => {
     if (actualValuesUsed[p.id] === undefined) {
-      const result = p.formula ? evaluateFormula(p.formula, context) : 0;
-      actualValuesUsed[p.id] = result;
-      context[p.id] = result;
-      const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
-      context[slugKey] = result;
+      const val = p.formula ? evaluateFormula(p.formula, context) : 0;
+      actualValuesUsed[p.id] = val;
+      context[p.id] = val;
     }
   });
 
-  // 4. Scoring and Weight Application
-  let totalImpact = 0;
-  Object.keys(model.weights || {}).forEach((pid) => {
-    const p = parameters.find(param => param.id === pid);
-    if (!p) return;
+  // -----------------------------
+  // 4. SCORING FUNCTION (FIXED)
+  // -----------------------------
+  function calculateScore(value: number, thresholds: number[], inverse = false) {
+    if (!thresholds || thresholds.length === 0) return 1;
 
-    // GET THE FINAL CALCULATED OR RAW VALUE
+    let score = 1;
+
+    for (let i = 0; i < thresholds.length; i++) {
+      if (inverse) {
+        if (value <= thresholds[i]) {
+          score = 5 - i;
+          break;
+        }
+      } else {
+        if (value >= thresholds[i]) {
+          score = i + 2;
+        }
+      }
+    }
+
+    return Math.max(1, Math.min(score, 5));
+  }
+
+  // -----------------------------
+  // 5. Apply scoring + weights
+  // -----------------------------
+  let totalImpact = 0;
+
+  Object.keys(model.weights || {}).forEach(pid => {
     const val = actualValuesUsed[pid] ?? context[pid] ?? 0;
-    
-    // GET TRANSFORMATION CONFIG (Fallback to safe defaults)
-    const config = model.transformations?.[pid] || { thresholds: [20, 40, 60, 80], inverse: false };
-    
-    // CALCULATE 1-5 SCORE
-    const score = scoreMetric(val, config);
+
+    const config = model.transformations?.[pid];
+
+    if (!config) {
+      console.warn(`Missing transformation for ${pid}`);
+      transformedScores[pid] = 1;
+      weightedScores[pid] = 0;
+      return;
+    }
+
+    const score = calculateScore(val, config.thresholds, config.inverse);
     transformedScores[pid] = score;
 
-    // CALCULATE IMPACT: (Score / 5) * Weight
     const weight = Number(model.weights[pid]) || 0;
-    const impact = (score / 5) * weight;
-    
+
+    // ✅ CORRECT IMPACT
+    const impact = score * weight;
+
     weightedScores[pid] = impact;
     totalImpact += impact;
   });
 
-  // 5. Final Mapping to Rating Scale
+  // -----------------------------
+  // 6. Final rating
+  // -----------------------------
   const finalScore = totalImpact;
+
   const sortedMapping = [...scale.mapping].sort((a, b) => b.minScore - a.minScore);
   const ratingMatch = sortedMapping.find(m => finalScore >= m.minScore);
 

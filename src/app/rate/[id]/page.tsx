@@ -351,11 +351,11 @@ export default function RatingExecutionPage() {
                                     <TableBody>
                                         {Object.keys(selectedModel?.weights || {}).map((pid) => {
                                             const p = parameters.find(param => param.id === pid)
-                                            const val = calculation.actualValuesUsed[pid] ?? 0;
+                                            const val = calculation.actualValuesUsed[pid];
                                             const score = calculation.transformedScores[pid] || 1;
                                             const weight = Number(selectedModel?.weights[pid]) || 0;
                                             const impact = calculation.weightedScores[pid] || 0;
-                                            const transConfig = selectedModel?.transformations?.[pid] || { thresholds: [20, 40, 60, 80], inverse: false };
+                                            const transConfig = selectedModel?.transformations?.[pid] || null;
                                             
                                             return (
                                                 <TableRow key={pid} className="hover:bg-slate-50/50 transition-colors">

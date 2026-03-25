@@ -84,6 +84,7 @@ export default function RatingExecutionPage() {
         load()
     }, [id])
 
+    // Precision Fix: Synchronized derived ratio display
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
@@ -91,34 +92,29 @@ export default function RatingExecutionPage() {
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-            const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
-            const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             context[p.id] = val;
-            context[slugKey] = val;
-            context[nameKey] = val;
+            context[(p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_')] = val;
+            context[(p.name || "").toLowerCase().replace(/[\s-]/g, '_')] = val;
         });
         
         const results: Record<string, number> = {};
         parameters.filter(p => p.type === 'derived').forEach(p => {
-            const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
-            const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+            const slug = (p.slug || "").toLowerCase();
+            const name = (p.name || "").toLowerCase();
             
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
-                results[p.id] = (debt / (gdp || 1)) * 100;
-            } 
-            else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
+                results[p.id] = (debt / gdp) * 100;
+            } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
                 const res = context['fx_reserves'] || context['reserves'] || 0;
                 const imp = context['imports'] || 1;
-                results[p.id] = res / (imp || 1);
-            }
-            else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
+                results[p.id] = res / imp;
+            } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
                 const int = context['interest_payments'] || context['interest'] || 0;
                 const rev = context['government_revenue'] || context['revenue'] || 1;
-                results[p.id] = (int / (rev || 1)) * 100;
-            }
-            else if (p.formula) {
+                results[p.id] = (int / rev) * 100;
+            } else if (p.formula) {
                 results[p.id] = evaluateFormula(p.formula, context);
             }
         });
@@ -147,7 +143,7 @@ export default function RatingExecutionPage() {
         setIsGenerating(true)
         
         const demoData: Record<string, number> = {
-            gdp: 3400, // USD Billion
+            gdp: 3400, 
             gdp_growth: 6.5,
             gdp_per_capita: 2400,
             inflation: 5.5,
@@ -287,13 +283,13 @@ export default function RatingExecutionPage() {
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {parameters.filter(p => p.type === 'derived').map(p => {
-                                        const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
-                                        const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+                                        const slug = (p.slug || "").toLowerCase();
+                                        const name = (p.name || "").toLowerCase();
                                         let formulaDisplay = p.formula || 'Custom Logic';
                                         
-                                        if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) formulaDisplay = '(Gov Debt / GDP) × 100';
-                                        if (slug.includes('reserve_cover') || name.includes('reserve_cover')) formulaDisplay = 'FX Reserves / Imports';
-                                        if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) formulaDisplay = '(Interest / Revenue) × 100';
+                                        if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) formulaDisplay = '(Debt / GDP) × 100';
+                                        else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) formulaDisplay = 'Reserves / Imports';
+                                        else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) formulaDisplay = '(Interest / Revenue) × 100';
 
                                         return (
                                             <div key={p.id} className="p-8 bg-white rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between transition-all hover:border-primary/30 hover:shadow-md group">
@@ -334,10 +330,10 @@ export default function RatingExecutionPage() {
                                 <Table className="border-b">
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>
-                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5 px-12">Analytical Parameter</TableHead>
-                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Final Value</TableHead>
-                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5 text-center">Scoring Logic</TableHead>
-                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Trans. Score</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5 px-12">Parameter</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Value</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5 text-center">Benchmarks</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Score</TableHead>
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Weight</TableHead>
                                             <TableHead className="text-right font-black text-slate-900 uppercase text-xs py-5 px-12">Impact</TableHead>
                                         </TableRow>
@@ -370,13 +366,13 @@ export default function RatingExecutionPage() {
                                                                         </div>
                                                                         <div className="flex gap-0.5">
                                                                             {transConfig?.thresholds.map((t: number, i: number) => (
-                                                                                <div key={i} className="w-4 h-1 rounded-full bg-slate-200" title={`T${i+2}: ${t}`} />
+                                                                                <div key={i} className="w-4 h-1 rounded-full bg-slate-200" />
                                                                             ))}
                                                                         </div>
                                                                     </div>
                                                                 </TooltipTrigger>
                                                                 <TooltipContent className="p-3 bg-slate-900 text-white border-none shadow-2xl">
-                                                                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Threshold Benchmarks</p>
+                                                                    <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Threshold Ranges</p>
                                                                     <div className="grid grid-cols-4 gap-3 font-mono text-xs">
                                                                         {transConfig?.thresholds.map((t: number, i: number) => (
                                                                             <div key={i} className="text-center">

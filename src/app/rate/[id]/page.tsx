@@ -30,7 +30,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2, Info, RefreshCw, Database, Settings2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function RatingExecutionPage() {
@@ -156,54 +155,69 @@ export default function RatingExecutionPage() {
     const handleSuggest = async () => {
         if (!country) return;
         setIsGenerating(true)
-        try {
-            const suggested = await suggestFactSheetData({ countryName: country.name })
-            const filled = new Set(autoFilledFields)
-            
-            // Intelligence Mapping: Map AI output keys to local parameters
-            // AI Keys: gdp, gdp_growth, inflation, debt, revenue, interest, fx_reserves, imports, exports, etc.
-            setFactSheet(prev => {
-                const next = { ...prev };
-                parameters.forEach(p => {
-                    if (p.type !== 'raw') return;
+        
+        // Use realistic demo values for India (as requested)
+        const demoData: Record<string, number> = {
+            gdp: 3400000000000,
+            gdp_growth: 6.5,
+            gdp_per_capita: 2400,
+            inflation: 5.5,
+            debt: 3000000000000,
+            government_debt: 3000000000000,
+            revenue: 700000000000,
+            government_revenue: 700000000000,
+            interest: 200000000000,
+            interest_payments: 200000000000,
+            fx_reserves: 600000000000,
+            imports: 700000000000,
+            exports: 670000000000,
+            fiscal_balance: -6,
+            inflation_volatility: 2.5,
+            exchange_rate_volatility: 3,
+            political_stability: 0.5,
+            governance_score: 0.6,
+            climate_risk: 0.4,
+            social_risk: 0.5
+        };
 
-                    const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
-                    const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-                    
-                    // Try to find a match in the suggested data
-                    let val = undefined;
+        // Simulate a short processing delay for UX
+        await new Promise(resolve => setTimeout(resolve, 600));
 
-                    // 1. Direct Slug/ID Match
-                    if ((suggested as any)[slug] !== undefined) val = (suggested as any)[slug];
-                    else if ((suggested as any)[p.id] !== undefined) val = (suggested as any)[p.id];
-                    
-                    // 2. Fuzzy Mapping for common naming variations
-                    else if (slug.includes('gdp') && !slug.includes('growth') && suggested.gdp) val = suggested.gdp;
-                    else if (slug.includes('gdp_growth') && suggested.gdp_growth) val = suggested.gdp_growth;
-                    else if (slug.includes('inflation') && suggested.inflation) val = suggested.inflation;
-                    else if ((slug.includes('debt') || name.includes('debt')) && !slug.includes('external') && !slug.includes('service') && suggested.debt) val = suggested.debt;
-                    else if ((slug.includes('revenue') || name.includes('revenue')) && suggested.revenue) val = suggested.revenue;
-                    else if ((slug.includes('interest') || name.includes('interest')) && suggested.interest) val = suggested.interest;
-                    else if ((slug.includes('reserves') || slug.includes('fx')) && suggested.fx_reserves) val = suggested.fx_reserves;
-                    else if ((slug.includes('imports') || name.includes('imports')) && suggested.imports) val = suggested.imports;
-                    else if ((slug.includes('exports') || name.includes('exports')) && suggested.exports) val = suggested.exports;
-                    else if (slug.includes('external_debt') && suggested.external_debt) val = suggested.external_debt;
+        const filled = new Set(autoFilledFields)
+        setFactSheet(prev => {
+            const next = { ...prev };
+            parameters.forEach(p => {
+                if (p.type !== 'raw') return;
 
-                    if (val !== undefined && val !== null) {
-                        next[p.id] = val;
-                        filled.add(p.id);
-                    }
-                })
-                return next;
-            });
-            setAutoFilledFields(filled)
-            toast({ title: "AI Synthesis Complete", description: "Economic profile updated with current data." })
-        } catch (e) {
-            console.error("AI Fetch Error:", e);
-            toast({ title: "AI Synthesis Failed", description: "Could not retrieve data for this sovereign.", variant: "destructive" })
-        } finally {
-            setIsGenerating(false)
-        }
+                const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
+                const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+                
+                // Try to find a match in the demo data
+                let val = undefined;
+
+                if (demoData[slug] !== undefined) val = demoData[slug];
+                else if (demoData[name] !== undefined) val = demoData[name];
+                else if (demoData[p.id] !== undefined) val = demoData[p.id];
+                
+                // Fuzzy Mapping for common naming variations
+                else if (slug.includes('gdp') && !slug.includes('growth')) val = demoData.gdp;
+                else if (slug.includes('debt')) val = demoData.government_debt;
+                else if (slug.includes('revenue')) val = demoData.government_revenue;
+                else if (slug.includes('interest')) val = demoData.interest_payments;
+                else if (slug.includes('reserves') || slug.includes('fx')) val = demoData.fx_reserves;
+                else if (slug.includes('imports')) val = demoData.imports;
+                else if (slug.includes('exports')) val = demoData.exports;
+
+                if (val !== undefined && val !== null) {
+                    next[p.id] = val;
+                    filled.add(p.id);
+                }
+            })
+            return next;
+        });
+        setAutoFilledFields(filled)
+        setIsGenerating(false)
+        toast({ title: "Auto Data Loaded", description: "Economic profile updated with realistic demo values." })
     }
 
     const handleFinalize = async () => {
@@ -272,7 +286,7 @@ export default function RatingExecutionPage() {
                                         <CardDescription className="text-slate-500 font-medium text-sm">Capture raw macroeconomic and fiscal variables.</CardDescription>
                                     </div>
                                     <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating} className="border-2 font-bold h-10 px-6 hover:bg-slate-50 transition-colors">
-                                        <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500 fill-yellow-500" /> GenAI Synthesis
+                                        <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500 fill-yellow-500" /> Auto Fetch Data
                                     </Button>
                                 </CardHeader>
                                 <CardContent className="p-10">
@@ -292,7 +306,7 @@ export default function RatingExecutionPage() {
                                                             autoFilledFields.has(p.id) ? "bg-green-50/50 border-green-200 focus:border-green-400" : "focus:border-primary border-slate-200"
                                                         )} 
                                                     />
-                                                    {autoFilledFields.has(p.id) && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-green-700 font-black bg-green-100 px-2 py-1 rounded">AI DATA</span>}
+                                                    {autoFilledFields.has(p.id) && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] text-green-700 font-black bg-green-100 px-2 py-1 rounded">AUTO DATA</span>}
                                                 </div>
                                             </div>
                                         ))}

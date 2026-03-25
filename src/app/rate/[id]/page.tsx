@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -88,7 +87,7 @@ export default function RatingExecutionPage() {
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
-        // 1. Build context from raw values
+        // 1. Build context from raw values for immediate feedback
         const context: Record<string, number> = {}; 
         parameters.forEach(p => {
             if (p.type === 'raw') {
@@ -109,19 +108,17 @@ export default function RatingExecutionPage() {
             const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
             const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             
-            // DEBT TO GDP: (Government Debt / GDP) * 100
+            // Explicit logic for core ratios
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp') || name.includes('debt_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
                 results[p.id] = (debt / gdp) * 100;
             } 
-            // RESERVE COVER: FX Reserves / Imports
             else if (slug.includes('reserve_cover') || name.includes('reserve_cover') || name.includes('fx_reserves_imports')) {
                 const res = context['fx_reserves'] || context['reserves'] || 0;
                 const imp = context['imports'] || 1;
                 results[p.id] = res / imp;
             }
-            // INTEREST TO REVENUE: (Interest Payments / Government Revenue) * 100
             else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue') || name.includes('interest_revenue')) {
                 const int = context['interest_payments'] || context['interest'] || 0;
                 const rev = context['government_revenue'] || context['revenue'] || 1;
@@ -138,7 +135,7 @@ export default function RatingExecutionPage() {
     const handleRun = () => {
         if (!selectedModel || !selectedScale || !parameters.length) return
         
-        // Ensure all factSheet inputs are captured as numbers
+        // Final capture of all raw inputs
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
             if (p.type === 'raw') {
@@ -147,18 +144,19 @@ export default function RatingExecutionPage() {
             }
         });
 
-        // The rating engine handles the PART 1 derived logic internally
+        // Run full quantitative pipeline
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
         setCalculation(result)
         setStep("calculate")
         
-        toast({ title: "Analysis Complete", description: "Quantitative breakdown generated from Fact Sheet inputs." })
+        toast({ title: "Analysis Finalized", description: `Aggregate Score: ${result.finalScore.toFixed(1)}%` })
     }
 
     const handleSuggest = () => {
         if (!country) return;
         setIsGenerating(true)
         
+        // India-Specific Economic Profile (Latest Approximate Benchmarks)
         const demoData: Record<string, number> = {
             gdp: 3400000000000,
             gdp_growth: 6.5,
@@ -203,7 +201,7 @@ export default function RatingExecutionPage() {
         setAutoFilledFields(filled);
         setIsGenerating(false);
         
-        toast({ title: "Auto Data Loaded", description: "Professional benchmarks for India harvested successfully." })
+        toast({ title: "Demo Data Populated", description: "Harvested latest sovereign benchmarks for India." })
     }
 
     const handleFinalize = async () => {
@@ -218,7 +216,7 @@ export default function RatingExecutionPage() {
             approvalStatus: 'pending',
             reason: rationale
         })
-        toast({ title: "Rating Submitted" })
+        toast({ title: "Rating Session Submitted" })
         router.push('/')
     }
 
@@ -269,7 +267,7 @@ export default function RatingExecutionPage() {
                                 <CardHeader className="flex flex-row items-center justify-between bg-white border-b py-8 px-10">
                                     <div>
                                         <CardTitle className="text-3xl font-black text-slate-900">Country Fact Sheet</CardTitle>
-                                        <CardDescription className="text-slate-500 font-medium text-base mt-1">Capture raw macroeconomic and fiscal variables.</CardDescription>
+                                        <CardDescription className="text-slate-500 font-medium text-base mt-1">Capture macroeconomic and fiscal variables for analysis.</CardDescription>
                                     </div>
                                     <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating} className="border-2 font-bold h-10 px-6 hover:bg-slate-50 transition-colors">
                                         <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500 fill-yellow-500" /> Auto Fetch Data
@@ -348,7 +346,7 @@ export default function RatingExecutionPage() {
                         <Card className="border-2 shadow-sm">
                             <CardHeader className="border-b bg-slate-50/50 py-10 px-12">
                                 <CardTitle className="text-3xl font-black text-slate-900">Quantitative Scoring Breakdown</CardTitle>
-                                <CardDescription className="text-slate-600 font-medium text-lg mt-2">Scoring results mapped from Fact Sheet inputs to analytical pillar weights.</CardDescription>
+                                <CardDescription className="text-slate-600 font-medium text-lg mt-2">Analytical results mapped from fact sheet variables to framework scoring buckets.</CardDescription>
                             </CardHeader>
                             <CardContent className="p-0">
                                 <Table className="border-b">
@@ -372,7 +370,9 @@ export default function RatingExecutionPage() {
                                                         {val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </TableCell>
                                                     <TableCell className="font-bold text-slate-800">
-                                                        <Badge variant="outline" className="text-base font-black border-2 px-3 py-1 bg-white">{calculation.transformedScores[pid]}</Badge>
+                                                        <Badge variant="outline" className="text-base font-black border-2 px-3 py-1 bg-white">
+                                                            {calculation.transformedScores[pid] || 1}
+                                                        </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-slate-700 font-bold text-base">{selectedModel?.weights[pid]}%</TableCell>
                                                     <TableCell className="text-right font-black text-slate-900 px-12 text-lg">

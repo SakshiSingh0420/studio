@@ -1,4 +1,3 @@
-
 'use client';
 
 export type Parameter = {
@@ -78,10 +77,31 @@ export function evaluateFormula(formula: string, context: Record<string, number>
 /**
  * Maps a quantitative value to a 1-5 score based on thresholds.
  * Thresholds: [T2, T3, T4, T5]
+ * 
+ * Logic flow:
+ * Normal (Inverse: OFF): 
+ * Score 5: >= T5
+ * Score 4: >= T4
+ * Score 3: >= T3
+ * Score 2: >= T2
+ * Score 1: < T2
+ * 
+ * Inverse (Inverse: ON):
+ * Score 5: <= T2
+ * Score 4: <= T3
+ * Score 3: <= T4
+ * Score 2: <= T5
+ * Score 1: > T5
  */
 export function scoreMetric(value: number, config: ModelTransformation): number {
   const { thresholds, inverse } = config;
   
+  // Safety check for malformed thresholds
+  if (!thresholds || thresholds.length < 4) {
+    console.warn("Invalid thresholds provided for scoring. Defaulting to Score 1.");
+    return 1;
+  }
+
   if (!inverse) {
     // Normal logic: higher is better (e.g. GDP Growth, Reserves)
     if (value >= thresholds[3]) return 5;
@@ -108,15 +128,15 @@ export function runDynamicRating(
   scale: RatingScale,
   parameters: Parameter[]
 ) {
-  console.log("--- ANALYSIS START: QUANTITATIVE PIPELINE ---");
-  console.log("1. Raw Inputs Received:", valuesById);
+  console.log("--- ANALYTICAL PIPELINE START ---");
+  console.log("Input Parameters Captured:", valuesById);
 
   const transformedScores: Record<string, number> = {};
   const weightedScores: Record<string, number> = {};
   const actualValuesUsed: Record<string, number> = {};
   const context: Record<string, number> = {};
   
-  // PHASE 1: Build Variable Context for Formulas (Normalize keys)
+  // PHASE 1: Build variable context for formulas (ID, Slug, and Normalized Name)
   parameters.forEach(p => {
     const val = valuesById[p.id] ?? 0;
     const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
@@ -140,7 +160,7 @@ export function runDynamicRating(
     });
     
     if (p) {
-        // Build local context for the logic block by mapping conceptual keys to actual user values
+        // Build local context for conceptual mapping
         const localCtx: Record<string, number> = {
             debt: context['government_debt'] || context['debt'] || 0,
             gdp: context['gdp'] || context['nominal_gdp'] || 1,
@@ -156,11 +176,10 @@ export function runDynamicRating(
       // Update global context for other formulas
       const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
       context[slugKey] = result;
-      console.log(`2. Derived [${p.name}]:`, result.toFixed(2));
+      console.log(`Derived [${p.name}] Value:`, result.toFixed(2));
     }
   };
 
-  // PART 1 REQUIRED CALCULATIONS
   // 1. Debt to GDP: (Government Debt / GDP) * 100
   computeDerived(['debt_to_gdp', 'debt_gdp'], (c) => (c.debt / (c.gdp || 1)) * 100);
 
@@ -170,7 +189,7 @@ export function runDynamicRating(
   // 3. Interest to Revenue: (Interest Payments / Government Revenue) * 100
   computeDerived(['interest_to_revenue', 'interest_revenue'], (c) => (c.interest / (c.revenue || 1)) * 100);
 
-  // PHASE 3: Generic Formula Evaluation for other derived parameters
+  // PHASE 3: Generic Formula Evaluation for remaining derived parameters
   parameters.filter(p => p.type === 'derived' && p.formula).forEach(p => {
     if (actualValuesUsed[p.id] === undefined || actualValuesUsed[p.id] === 0) {
       const result = evaluateFormula(p.formula!, context);
@@ -180,35 +199,39 @@ export function runDynamicRating(
     }
   });
 
-  // PHASE 4: Scoring and Weighting (Apply Thresholds)
+  // PHASE 4: Threshold-Based Scoring (1-5) and Weight Application
   Object.keys(model.weights).forEach((paramId) => {
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
 
     const val = actualValuesUsed[paramId] ?? 0;
-    const trans = model.transformations[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
     
-    // TRANS. SCORE (1-5)
+    // FETCH CONFIG FROM MODEL (Falling back to conservative defaults if missing)
+    const trans = model.transformations?.[paramId] || { thresholds: [20, 40, 60, 80], inverse: false };
+    
+    // ASSIGN 1-5 SCORE
     const score = scoreMetric(val, trans);
     transformedScores[paramId] = score;
 
-    // IMPACT Calculation: (Score / 5) * Weight
+    // IMPACT: (Score / 5) * Weight
     const weight = model.weights[paramId] || 0;
     const impact = (score / 5) * weight;
     weightedScores[paramId] = impact;
 
-    console.log(`4. Score [${p.name}]: Value=${val.toFixed(2)}, Score=${score}, Impact=${impact.toFixed(2)}`);
+    console.log(`Scoring [${p.name}]: Value=${val.toFixed(2)}, Thresh=[${trans.thresholds}], Inverse=${trans.inverse} -> Score=${score}, Impact=${impact.toFixed(2)}`);
   });
 
-  // PHASE 5: Aggregate Scoring and Scale Mapping
+  // PHASE 5: Aggregation and Final Rating Mapping
   const finalAggregateScore = Object.values(weightedScores).reduce((a, b) => a + b, 0);
   
-  // Sort scale by minScore descending
+  // Sort scale by minScore descending to find the highest matching bucket
   const sortedMapping = [...scale.mapping].sort((a, b) => b.minScore - a.minScore);
   const mapping = sortedMapping.find(m => finalAggregateScore >= m.minScore);
 
-  console.log("5. FINAL RESULTS: Score =", finalAggregateScore.toFixed(2) + "%", "Rating =", mapping?.rating || "NR");
-  console.log("--- ANALYSIS END ---");
+  console.log("FINAL QUANTITATIVE RESULTS:");
+  console.log("Aggregate Score:", finalAggregateScore.toFixed(2) + "%");
+  console.log("Implied Rating:", mapping?.rating || "NR");
+  console.log("--- ANALYTICAL PIPELINE END ---");
 
   return {
     transformedScores,

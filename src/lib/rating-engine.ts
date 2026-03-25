@@ -60,7 +60,6 @@ export function evaluateFormula(formula: string, context: Record<string, number>
     // Clean up any remaining characters that aren't numbers or math symbols
     const remainingAlpha = expression.replace(/[0-9.+\-*/()\s]/g, '');
     if (/[a-z]/i.test(remainingAlpha)) {
-      console.warn("Formula evaluation: residual characters found", remainingAlpha);
       return 0;
     }
 
@@ -77,12 +76,13 @@ export function evaluateFormula(formula: string, context: Record<string, number>
 
 /**
  * Maps a quantitative value to a 1-5 score based on thresholds.
+ * Thresholds: [T2, T3, T4, T5]
  */
 export function scoreMetric(value: number, config: ModelTransformation): number {
   const { thresholds, inverse } = config;
   
   if (!inverse) {
-    // Normal logic: higher is better
+    // Normal logic: higher is better (e.g. GDP Growth, Reserves)
     if (value >= thresholds[3]) return 5;
     if (value >= thresholds[2]) return 4;
     if (value >= thresholds[1]) return 3;
@@ -118,26 +118,18 @@ export function runDynamicRating(
   // PHASE 1: Build Variable Context for Formulas
   parameters.forEach(p => {
     const val = valuesById[p.id] ?? 0;
-    
-    // Primary key for context is the SLUG
     const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
     context[slugKey] = val;
-    
-    // Also map by ID and Name for maximum compatibility
     context[p.id.toLowerCase()] = val;
-    context[p.name.toLowerCase().replace(/[\s-]/g, '_')] = val;
-
-    // Default "Actual Value Used" is the raw input
     actualValuesUsed[p.id] = val;
   });
 
-  // PHASE 2: Hardcoded Failsafe Calculations (Prioritized over generic formulas)
+  // PHASE 2: Forced Calculations for Key Ratios
   const computeDerived = (targetKeys: string[], sourceKeys: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
     const p = parameters.find(param => {
       const slug = (param.slug || "").toLowerCase().replace(/[-\s]/g, '_');
       const name = (param.name || "").toLowerCase().replace(/[\s-]/g, '_');
-      const id = (param.id || "").toLowerCase();
-      return targetKeys.includes(slug) || targetKeys.includes(name) || targetKeys.includes(id);
+      return targetKeys.includes(slug) || targetKeys.includes(name) || targetKeys.includes(param.id.toLowerCase());
     });
     
     if (p) {
@@ -158,12 +150,12 @@ export function runDynamicRating(
       const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
       context[slugKey] = result;
       actualValuesUsed[p.id] = result;
-      console.log(`2. Computed Derived Metric [${p.name}]:`, result);
+      console.log(`2. Derived [${p.name}]:`, result);
     }
   };
 
   // Debt to GDP
-  computeDerived(['debt_to_gdp', 'debt_gdp'], 
+  computeDerived(['debt_to_gdp', 'debt_gdp', 'government_debt_gdp'], 
     { debt: ['government_debt', 'debt'], gdp: ['gdp', 'nominal_gdp'] }, 
     (c) => (c.debt / (c.gdp || 1)) * 100
   );
@@ -182,17 +174,15 @@ export function runDynamicRating(
 
   // PHASE 3: Generic Formula Evaluation
   parameters.filter(p => p.type === 'derived' && p.formula).forEach(p => {
-    // Only run if not already hardcoded above
     if (!actualValuesUsed[p.id] || actualValuesUsed[p.id] === 0) {
       const result = evaluateFormula(p.formula!, context);
       const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
       context[slugKey] = result;
       actualValuesUsed[p.id] = result;
-      console.log(`3. Evaluated Formula for [${p.name}]:`, result);
     }
   });
 
-  // PHASE 4: Scoring and Weighting (Impact Calculation)
+  // PHASE 4: Scoring and Weighting (1-5 Scale)
   Object.keys(model.weights).forEach((paramId) => {
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
@@ -205,27 +195,26 @@ export function runDynamicRating(
     transformedScores[paramId] = score;
 
     // IMPACT Calculation: (Score / 5) * Weight
-    // This represents the parameter's contribution to the final 100% score.
     const weight = model.weights[paramId] || 0;
     const impact = (score / 5) * weight;
     weightedScores[paramId] = impact;
 
-    console.log(`4. Scoring [${p.name}]: Val=${val.toFixed(2)}, Score=${score}, Impact=${impact.toFixed(2)}`);
+    console.log(`4. Parameter [${p.name}]: Val=${val.toFixed(2)}, Score=${score}, Weight=${weight}%, Impact=${impact.toFixed(2)}`);
   });
 
   // PHASE 5: Aggregate Scoring and Rating Mapping
   const finalAggregateScore = Object.values(weightedScores).reduce((a, b) => a + b, 0);
   
-  const mapping = scale.mapping.find(
-    (m) => finalAggregateScore >= m.minScore && finalAggregateScore <= m.maxScore
-  );
+  // Sort scale by minScore descending to find the highest appropriate bucket
+  const sortedMapping = [...scale.mapping].sort((a, b) => b.minScore - a.minScore);
+  const mapping = sortedMapping.find(m => finalAggregateScore >= m.minScore);
 
-  console.log("5. FINAL RESULTS: Score =", finalAggregateScore.toFixed(2) + "%", "Rating =", mapping?.rating || "NR");
+  console.log("5. AGGREGATE RESULTS: Score =", finalAggregateScore.toFixed(2) + "%", "Rating =", mapping?.rating || "NR");
   console.log("--- ANALYSIS END ---");
 
   return {
     transformedScores,
-    weightedScores, // This now contains "IMPACT"
+    weightedScores,
     finalScore: finalAggregateScore,
     initialRating: mapping?.rating || "NR",
     actualValuesUsed

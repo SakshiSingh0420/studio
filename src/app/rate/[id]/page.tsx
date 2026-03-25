@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -158,23 +159,48 @@ export default function RatingExecutionPage() {
         try {
             const suggested = await suggestFactSheetData({ countryName: country.name })
             const filled = new Set(autoFilledFields)
+            
+            // Intelligence Mapping: Map AI output keys to local parameters
+            // AI Keys: gdp, gdp_growth, inflation, debt, revenue, interest, fx_reserves, imports, exports, etc.
             setFactSheet(prev => {
                 const next = { ...prev };
                 parameters.forEach(p => {
-                    const slugSource = p.slug || p.id || "";
-                    const normSlug = slugSource.toLowerCase().replace(/-/g, '_');
-                    const val = (suggested as any)[normSlug];
-                    if (p.type === 'raw' && val !== undefined && val !== null) {
-                        next[p.id] = val
-                        filled.add(p.id)
+                    if (p.type !== 'raw') return;
+
+                    const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
+                    const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+                    
+                    // Try to find a match in the suggested data
+                    let val = undefined;
+
+                    // 1. Direct Slug/ID Match
+                    if ((suggested as any)[slug] !== undefined) val = (suggested as any)[slug];
+                    else if ((suggested as any)[p.id] !== undefined) val = (suggested as any)[p.id];
+                    
+                    // 2. Fuzzy Mapping for common naming variations
+                    else if (slug.includes('gdp') && !slug.includes('growth') && suggested.gdp) val = suggested.gdp;
+                    else if (slug.includes('gdp_growth') && suggested.gdp_growth) val = suggested.gdp_growth;
+                    else if (slug.includes('inflation') && suggested.inflation) val = suggested.inflation;
+                    else if ((slug.includes('debt') || name.includes('debt')) && !slug.includes('external') && !slug.includes('service') && suggested.debt) val = suggested.debt;
+                    else if ((slug.includes('revenue') || name.includes('revenue')) && suggested.revenue) val = suggested.revenue;
+                    else if ((slug.includes('interest') || name.includes('interest')) && suggested.interest) val = suggested.interest;
+                    else if ((slug.includes('reserves') || slug.includes('fx')) && suggested.fx_reserves) val = suggested.fx_reserves;
+                    else if ((slug.includes('imports') || name.includes('imports')) && suggested.imports) val = suggested.imports;
+                    else if ((slug.includes('exports') || name.includes('exports')) && suggested.exports) val = suggested.exports;
+                    else if (slug.includes('external_debt') && suggested.external_debt) val = suggested.external_debt;
+
+                    if (val !== undefined && val !== null) {
+                        next[p.id] = val;
+                        filled.add(p.id);
                     }
                 })
                 return next;
             });
             setAutoFilledFields(filled)
-            toast({ title: "AI Synthesis Complete" })
+            toast({ title: "AI Synthesis Complete", description: "Economic profile updated with current data." })
         } catch (e) {
-            toast({ title: "AI Error", variant: "destructive" })
+            console.error("AI Fetch Error:", e);
+            toast({ title: "AI Synthesis Failed", description: "Could not retrieve data for this sovereign.", variant: "destructive" })
         } finally {
             setIsGenerating(false)
         }

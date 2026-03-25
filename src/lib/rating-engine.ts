@@ -1,3 +1,4 @@
+
 'use client';
 
 export type Parameter = {
@@ -115,74 +116,71 @@ export function runDynamicRating(
   const actualValuesUsed: Record<string, number> = {};
   const context: Record<string, number> = {};
   
-  // PHASE 1: Build Variable Context for Formulas
+  // PHASE 1: Build Variable Context for Formulas (Normalize keys)
   parameters.forEach(p => {
     const val = valuesById[p.id] ?? 0;
     const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
+    const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+    
     context[slugKey] = val;
+    context[nameKey] = val;
     context[p.id.toLowerCase()] = val;
-    actualValuesUsed[p.id] = val;
+    
+    if (p.type === 'raw') {
+      actualValuesUsed[p.id] = val;
+    }
   });
 
-  // PHASE 2: Forced Calculations for Key Ratios
-  const computeDerived = (targetKeys: string[], sourceKeys: Record<string, string[]>, logic: (ctx: Record<string, number>) => number) => {
+  // PHASE 2: Forced Calculations for Mandatory Ratios
+  const computeDerived = (targetKeys: string[], logic: (ctx: Record<string, number>) => number) => {
     const p = parameters.find(param => {
       const slug = (param.slug || "").toLowerCase().replace(/[-\s]/g, '_');
       const name = (param.name || "").toLowerCase().replace(/[\s-]/g, '_');
-      return targetKeys.includes(slug) || targetKeys.includes(name) || targetKeys.includes(param.id.toLowerCase());
+      return targetKeys.some(tk => slug.includes(tk) || name.includes(tk) || param.id.toLowerCase().includes(tk));
     });
     
     if (p) {
-      const localCtx: Record<string, number> = {};
-      Object.entries(sourceKeys).forEach(([key, variations]) => {
-        let foundVal = 0;
-        for (const v of variations) {
-          const normV = v.toLowerCase().replace(/[\s-]/g, '_');
-          if (context[normV] !== undefined) {
-            foundVal = context[normV];
-            break;
-          }
-        }
-        localCtx[key] = foundVal;
-      });
+        // Build local context for the logic block by mapping conceptual keys to actual user values
+        const localCtx: Record<string, number> = {
+            debt: context['government_debt'] || context['debt'] || 0,
+            gdp: context['gdp'] || context['nominal_gdp'] || 1,
+            res: context['fx_reserves'] || context['reserves'] || 0,
+            imp: context['imports'] || 1,
+            interest: context['interest_payments'] || context['interest'] || 0,
+            revenue: context['government_revenue'] || context['revenue'] || 1
+        };
 
       const result = logic(localCtx);
+      actualValuesUsed[p.id] = result;
+      
+      // Update global context for other formulas
       const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
       context[slugKey] = result;
-      actualValuesUsed[p.id] = result;
-      console.log(`2. Derived [${p.name}]:`, result);
+      console.log(`2. Derived [${p.name}]:`, result.toFixed(2));
     }
   };
 
-  // Debt to GDP
-  computeDerived(['debt_to_gdp', 'debt_gdp', 'government_debt_gdp'], 
-    { debt: ['government_debt', 'debt'], gdp: ['gdp', 'nominal_gdp'] }, 
-    (c) => (c.debt / (c.gdp || 1)) * 100
-  );
+  // PART 1 REQUIRED CALCULATIONS
+  // 1. Debt to GDP: (Government Debt / GDP) * 100
+  computeDerived(['debt_to_gdp', 'debt_gdp'], (c) => (c.debt / (c.gdp || 1)) * 100);
 
-  // Reserve Cover
-  computeDerived(['reserve_cover', 'fx_reserves_imports'], 
-    { res: ['fx_reserves', 'reserves'], imp: ['imports'] }, 
-    (c) => c.imp === 0 ? 0 : (c.res / c.imp)
-  );
+  // 2. Reserve Cover: FX Reserves / Imports
+  computeDerived(['reserve_cover', 'fx_reserves_imports'], (c) => (c.res / (c.imp || 1)));
 
-  // Interest to Revenue
-  computeDerived(['interest_to_revenue', 'interest_revenue'], 
-    { interest: ['interest_payments', 'interest'], revenue: ['government_revenue', 'revenue'] }, 
-    (c) => c.revenue === 0 ? 0 : (c.interest / c.revenue) * 100
-  );
+  // 3. Interest to Revenue: (Interest Payments / Government Revenue) * 100
+  computeDerived(['interest_to_revenue', 'interest_revenue'], (c) => (c.interest / (c.revenue || 1)) * 100);
 
-  // PHASE 3: Generic Formula Evaluation
+  // PHASE 3: Generic Formula Evaluation for other derived parameters
   parameters.filter(p => p.type === 'derived' && p.formula).forEach(p => {
-    if (!actualValuesUsed[p.id] || actualValuesUsed[p.id] === 0) {
+    if (actualValuesUsed[p.id] === undefined || actualValuesUsed[p.id] === 0) {
       const result = evaluateFormula(p.formula!, context);
+      actualValuesUsed[p.id] = result;
       const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
       context[slugKey] = result;
-      actualValuesUsed[p.id] = result;
     }
   });
 
-  // PHASE 4: Scoring and Weighting (1-5 Scale)
+  // PHASE 4: Scoring and Weighting (Apply Thresholds)
   Object.keys(model.weights).forEach((paramId) => {
     const p = parameters.find(param => param.id === paramId);
     if (!p) return;
@@ -199,17 +197,17 @@ export function runDynamicRating(
     const impact = (score / 5) * weight;
     weightedScores[paramId] = impact;
 
-    console.log(`4. Parameter [${p.name}]: Val=${val.toFixed(2)}, Score=${score}, Weight=${weight}%, Impact=${impact.toFixed(2)}`);
+    console.log(`4. Score [${p.name}]: Value=${val.toFixed(2)}, Score=${score}, Impact=${impact.toFixed(2)}`);
   });
 
-  // PHASE 5: Aggregate Scoring and Rating Mapping
+  // PHASE 5: Aggregate Scoring and Scale Mapping
   const finalAggregateScore = Object.values(weightedScores).reduce((a, b) => a + b, 0);
   
-  // Sort scale by minScore descending to find the highest appropriate bucket
+  // Sort scale by minScore descending
   const sortedMapping = [...scale.mapping].sort((a, b) => b.minScore - a.minScore);
   const mapping = sortedMapping.find(m => finalAggregateScore >= m.minScore);
 
-  console.log("5. AGGREGATE RESULTS: Score =", finalAggregateScore.toFixed(2) + "%", "Rating =", mapping?.rating || "NR");
+  console.log("5. FINAL RESULTS: Score =", finalAggregateScore.toFixed(2) + "%", "Rating =", mapping?.rating || "NR");
   console.log("--- ANALYSIS END ---");
 
   return {

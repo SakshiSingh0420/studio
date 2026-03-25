@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -86,15 +87,19 @@ export default function RatingExecutionPage() {
     // Live derived metrics for the input view
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
-        const context: Record<string, number> = {}; 
         
+        // 1. Build context from raw values
+        const context: Record<string, number> = {}; 
         parameters.forEach(p => {
             if (p.type === 'raw') {
                 const rawVal = factSheet[p.id];
                 const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
                 
                 const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
+                const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+                
                 context[slugKey] = val;
+                context[nameKey] = val;
                 context[p.id.toLowerCase()] = val;
             }
         });
@@ -102,18 +107,22 @@ export default function RatingExecutionPage() {
         const results: Record<string, number> = {};
         parameters.filter(p => p.type === 'derived').forEach(p => {
             const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
+            const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             
-            if (slug === 'debt_to_gdp' || slug === 'debt_gdp') {
+            // DEBT TO GDP: (Government Debt / GDP) * 100
+            if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp') || name.includes('debt_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
                 results[p.id] = (debt / gdp) * 100;
             } 
-            else if (slug === 'reserve_cover' || slug === 'fx_reserves_imports') {
+            // RESERVE COVER: FX Reserves / Imports
+            else if (slug.includes('reserve_cover') || name.includes('reserve_cover') || name.includes('fx_reserves_imports')) {
                 const res = context['fx_reserves'] || context['reserves'] || 0;
                 const imp = context['imports'] || 1;
                 results[p.id] = res / imp;
             }
-            else if (slug === 'interest_to_revenue' || slug === 'interest_revenue') {
+            // INTEREST TO REVENUE: (Interest Payments / Government Revenue) * 100
+            else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue') || name.includes('interest_revenue')) {
                 const int = context['interest_payments'] || context['interest'] || 0;
                 const rev = context['government_revenue'] || context['revenue'] || 1;
                 results[p.id] = (int / rev) * 100;
@@ -129,15 +138,16 @@ export default function RatingExecutionPage() {
     const handleRun = () => {
         if (!selectedModel || !selectedScale || !parameters.length) return
         
+        // Ensure all factSheet inputs are captured as numbers
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
             if (p.type === 'raw') {
                 const rawVal = factSheet[p.id];
-                const value = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-                numericInputs[p.id] = value;
+                numericInputs[p.id] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
             }
         });
 
+        // The rating engine handles the PART 1 derived logic internally
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
         setCalculation(result)
         setStep("calculate")
@@ -145,7 +155,7 @@ export default function RatingExecutionPage() {
         toast({ title: "Analysis Complete", description: "Quantitative breakdown generated from Fact Sheet inputs." })
     }
 
-    const handleSuggest = async () => {
+    const handleSuggest = () => {
         if (!country) return;
         setIsGenerating(true)
         
@@ -160,6 +170,7 @@ export default function RatingExecutionPage() {
             government_revenue: 700000000000,
             interest: 200000000000,
             interest_payments: 200000000000,
+            interest_to_revenue: 28.57,
             fx_reserves: 600000000000,
             imports: 700000000000,
             exports: 670000000000,
@@ -172,28 +183,27 @@ export default function RatingExecutionPage() {
             exchange_rate_volatility: 3
         };
 
-        await new Promise(resolve => setTimeout(resolve, 600));
-
         const filled = new Set<string>();
-        setFactSheet(prev => {
-            const next = { ...prev };
-            parameters.forEach(p => {
-                if (p.type !== 'raw') return;
-                const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
-                const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-                
-                let val = demoData[slug] ?? demoData[name] ?? demoData[p.id];
-                
-                if (val !== undefined) {
-                    next[p.id] = val;
-                    filled.add(p.id);
-                }
-            })
-            return next;
+        const nextFactSheet = { ...factSheet };
+
+        parameters.forEach(p => {
+            if (p.type !== 'raw') return;
+            const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
+            const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+            
+            const val = demoData[slug] ?? demoData[name] ?? demoData[p.id];
+            
+            if (val !== undefined) {
+                nextFactSheet[p.id] = val;
+                filled.add(p.id);
+            }
         });
-        setAutoFilledFields(filled)
-        setIsGenerating(false)
-        toast({ title: "Auto Data Loaded", description: "Demo benchmarks for India harvested successfully." })
+
+        setFactSheet(nextFactSheet);
+        setAutoFilledFields(filled);
+        setIsGenerating(false);
+        
+        toast({ title: "Auto Data Loaded", description: "Professional benchmarks for India harvested successfully." })
     }
 
     const handleFinalize = async () => {
@@ -298,11 +308,12 @@ export default function RatingExecutionPage() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {parameters.filter(p => p.type === 'derived').map(p => {
                                         const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
+                                        const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
                                         let formulaDisplay = p.formula || 'Custom Logic';
                                         
-                                        if (slug === 'debt_to_gdp' || slug === 'debt_gdp') formulaDisplay = '(Government Debt / GDP) × 100';
-                                        if (slug === 'reserve_cover' || slug === 'fx_reserves_imports') formulaDisplay = 'FX Reserves / Imports';
-                                        if (slug === 'interest_to_revenue' || slug === 'interest_revenue') formulaDisplay = '(Interest / Revenue) × 100';
+                                        if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp') || name.includes('debt_gdp')) formulaDisplay = '(Government Debt / GDP) × 100';
+                                        if (slug.includes('reserve_cover') || name.includes('reserve_cover') || name.includes('fx_reserves_imports')) formulaDisplay = 'FX Reserves / Imports';
+                                        if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue') || name.includes('interest_revenue')) formulaDisplay = '(Interest / Revenue) × 100';
 
                                         return (
                                             <div key={p.id} className="p-8 bg-white rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between transition-all hover:border-primary/30 hover:shadow-md group">

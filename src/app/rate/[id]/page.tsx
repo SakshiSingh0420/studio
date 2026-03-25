@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -27,10 +26,9 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, ArrowUp, ArrowDown, CheckCircle, Loader2, Info, RefreshCw, Database, Settings2 } from "lucide-react"
+import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -90,45 +88,37 @@ export default function RatingExecutionPage() {
         if (!parameters.length) return {};
         const context: Record<string, number> = {}; 
         
-        // 1. Populate raw inputs into context
         parameters.forEach(p => {
             if (p.type === 'raw') {
                 const rawVal = factSheet[p.id];
                 const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
                 
-                const slugKey = (p.slug || p.id || "").toLowerCase().replace(/-/g, '_');
-                const nameKey = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-
-                if (slugKey) context[slugKey] = val;
-                if (nameKey) context[nameKey] = val;
+                const slugKey = (p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_');
+                context[slugKey] = val;
+                context[p.id.toLowerCase()] = val;
             }
         });
         
-        // 2. Compute derived metrics for display
         const results: Record<string, number> = {};
         parameters.filter(p => p.type === 'derived').forEach(p => {
-            const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
-            const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+            const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
             
-            // Failsafe 1: Debt to GDP
-            if (slug === 'debt_to_gdp' || name === 'debt_to_gdp') {
-                const debt = context['government_debt'] || context['debt'] || context['total_government_debt'] || 0;
-                const gdp = context['gdp'] || context['nominal_gdp'] || context['gross_domestic_product'] || 1;
-                results[p.id] = (debt / (gdp || 1)) * 100;
+            // Failsafe Derived Logic for UI Preview
+            if (slug === 'debt_to_gdp') {
+                const debt = context['government_debt'] || context['debt'] || 0;
+                const gdp = context['gdp'] || context['nominal_gdp'] || 1;
+                results[p.id] = (debt / gdp) * 100;
             } 
-            // Failsafe 2: Reserve Cover
-            else if (slug === 'reserve_cover' || name === 'reserve_cover') {
-                const res = context['fx_reserves'] || context['reserves'] || context['foreign_exchange_reserves'] || 0;
-                const imp = context['imports'] || context['total_imports'] || 0;
-                results[p.id] = imp === 0 ? 0 : (res / imp);
+            else if (slug === 'reserve_cover') {
+                const res = context['fx_reserves'] || context['reserves'] || 0;
+                const imp = context['imports'] || 1;
+                results[p.id] = res / imp;
             }
-            // Failsafe 3: Interest to Revenue
-            else if (slug === 'interest_to_revenue' || name === 'interest_to_revenue') {
-                const interest = context['interest_payments'] || context['interest'] || context['government_interest_payments'] || 0;
-                const revenue = context['government_revenue'] || context['revenue'] || context['total_revenue'] || 1;
-                results[p.id] = (interest / (revenue || 1)) * 100;
+            else if (slug === 'interest_to_revenue') {
+                const int = context['interest_payments'] || context['interest'] || 0;
+                const rev = context['government_revenue'] || context['revenue'] || 1;
+                results[p.id] = (int / rev) * 100;
             }
-            // General Formula Pass
             else if (p.formula) {
                 results[p.id] = evaluateFormula(p.formula, context);
             }
@@ -140,23 +130,28 @@ export default function RatingExecutionPage() {
     const handleRun = () => {
         if (!selectedModel || !selectedScale || !parameters.length) return
         
+        // HARVEST inputs strictly from Fact Sheet
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
-            const rawVal = factSheet[p.id];
-            const value = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-            numericInputs[p.id] = value;
+            if (p.type === 'raw') {
+                const rawVal = factSheet[p.id];
+                const value = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+                numericInputs[p.id] = value;
+            }
         });
 
+        // EXECUTE quantitative engine
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
         setCalculation(result)
         setStep("calculate")
+        
+        toast({ title: "Analysis Complete", description: "Quantitative breakdown generated from Fact Sheet inputs." })
     }
 
     const handleSuggest = async () => {
         if (!country) return;
         setIsGenerating(true)
         
-        // Use realistic demo values for India (as requested)
         const demoData: Record<string, number> = {
             gdp: 3400000000000,
             gdp_growth: 6.5,
@@ -172,15 +167,12 @@ export default function RatingExecutionPage() {
             imports: 700000000000,
             exports: 670000000000,
             fiscal_balance: -6,
-            inflation_volatility: 2.5,
-            exchange_rate_volatility: 3,
             political_stability: 0.5,
             governance_score: 0.6,
             climate_risk: 0.4,
             social_risk: 0.5
         };
 
-        // Simulate a short processing delay for UX
         await new Promise(resolve => setTimeout(resolve, 600));
 
         const filled = new Set(autoFilledFields)
@@ -188,27 +180,12 @@ export default function RatingExecutionPage() {
             const next = { ...prev };
             parameters.forEach(p => {
                 if (p.type !== 'raw') return;
-
-                const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
+                const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
                 const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
                 
-                // Try to find a match in the demo data
-                let val = undefined;
-
-                if (demoData[slug] !== undefined) val = demoData[slug];
-                else if (demoData[name] !== undefined) val = demoData[name];
-                else if (demoData[p.id] !== undefined) val = demoData[p.id];
+                let val = demoData[slug] ?? demoData[name] ?? demoData[p.id];
                 
-                // Fuzzy Mapping for common naming variations
-                else if (slug.includes('gdp') && !slug.includes('growth')) val = demoData.gdp;
-                else if (slug.includes('debt')) val = demoData.government_debt;
-                else if (slug.includes('revenue')) val = demoData.government_revenue;
-                else if (slug.includes('interest')) val = demoData.interest_payments;
-                else if (slug.includes('reserves') || slug.includes('fx')) val = demoData.fx_reserves;
-                else if (slug.includes('imports')) val = demoData.imports;
-                else if (slug.includes('exports')) val = demoData.exports;
-
-                if (val !== undefined && val !== null) {
+                if (val !== undefined) {
                     next[p.id] = val;
                     filled.add(p.id);
                 }
@@ -217,7 +194,7 @@ export default function RatingExecutionPage() {
         });
         setAutoFilledFields(filled)
         setIsGenerating(false)
-        toast({ title: "Auto Data Loaded", description: "Economic profile updated with realistic demo values." })
+        toast({ title: "Auto Data Loaded", description: "Demo benchmarks for India harvested successfully." })
     }
 
     const handleFinalize = async () => {
@@ -293,7 +270,7 @@ export default function RatingExecutionPage() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-10 gap-y-8">
                                         {parameters.filter(p => p.type === 'raw').map((p) => (
                                             <div key={p.id} className="space-y-3">
-                                                <label className="text-sm font-black text-slate-900 uppercase tracking-tight flex justify-between">
+                                                <label className="text-sm font-black text-slate-900 uppercase tracking-tight">
                                                     {p.name}
                                                 </label>
                                                 <div className="relative group">
@@ -321,13 +298,12 @@ export default function RatingExecutionPage() {
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {parameters.filter(p => p.type === 'derived').map(p => {
-                                        const slug = (p.slug || "").toLowerCase().replace(/-/g, '_');
-                                        const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+                                        const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
                                         let formulaDisplay = p.formula || 'Custom Logic';
                                         
-                                        if (slug === 'debt_to_gdp' || name === 'debt_to_gdp') formulaDisplay = '(debt / gdp) * 100';
-                                        if (slug === 'reserve_cover' || name === 'reserve_cover') formulaDisplay = 'fx_reserves / imports';
-                                        if (slug === 'interest_to_revenue' || name === 'interest_to_revenue') formulaDisplay = '(interest / revenue) * 100';
+                                        if (slug === 'debt_to_gdp') formulaDisplay = '(Government Debt / GDP) × 100';
+                                        if (slug === 'reserve_cover') formulaDisplay = 'FX Reserves / Imports';
+                                        if (slug === 'interest_to_revenue') formulaDisplay = '(Interest / Revenue) × 100';
 
                                         return (
                                             <div key={p.id} className="p-6 bg-white rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between transition-all hover:border-primary/30 hover:shadow-md group">
@@ -362,7 +338,7 @@ export default function RatingExecutionPage() {
                         <Card className="border-2 shadow-sm">
                             <CardHeader className="border-b bg-slate-50/50 py-8 px-10">
                                 <CardTitle className="text-2xl font-black text-slate-900">Quantitative Scoring Breakdown</CardTitle>
-                                <CardDescription className="text-slate-500 font-medium">Scoring results mapped to analytical pillar weights.</CardDescription>
+                                <CardDescription className="text-slate-500 font-medium">Scoring results mapped from Fact Sheet inputs to analytical pillar weights.</CardDescription>
                             </CardHeader>
                             <CardContent className="p-0">
                                 <Table className="border-b">
@@ -385,9 +361,13 @@ export default function RatingExecutionPage() {
                                                     <TableCell className="font-black text-primary text-base">
                                                         {val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                     </TableCell>
-                                                    <TableCell className="font-bold text-slate-700">{calculation.transformedScores[pid]}</TableCell>
+                                                    <TableCell className="font-bold text-slate-700">
+                                                        <Badge variant="outline" className="text-sm font-black border-2">{calculation.transformedScores[pid]}</Badge>
+                                                    </TableCell>
                                                     <TableCell className="text-slate-500 font-medium">{selectedModel?.weights[pid]}%</TableCell>
-                                                    <TableCell className="text-right font-black text-slate-900 px-10">{(calculation.weightedScores[pid] || 0).toFixed(3)}</TableCell>
+                                                    <TableCell className="text-right font-black text-slate-900 px-10">
+                                                        {(calculation.weightedScores[pid] || 0).toFixed(2)}
+                                                    </TableCell>
                                                 </TableRow>
                                             )
                                         })}

@@ -39,6 +39,27 @@ import {
 
 const CATEGORIES = ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] as const;
 
+// Professional Sovereign Benchmarks (Thresholds and Inverse Flags)
+const PROFESSIONAL_THRESHOLDS: Record<string, ModelTransformation> = {
+  "gdp": { thresholds: [500000000000, 1000000000000, 2000000000000, 5000000000000], inverse: false },
+  "gdp_growth": { thresholds: [2, 4, 6, 8], inverse: false },
+  "inflation": { thresholds: [2, 4, 6, 10], inverse: true },
+  "inflation_volatility": { thresholds: [1, 2, 4, 6], inverse: true },
+  "debt_to_gdp": { thresholds: [40, 60, 80, 100], inverse: true },
+  "fiscal_balance": { thresholds: [-6, -4, -2, 0], inverse: false },
+  "government_revenue": { thresholds: [10, 15, 20, 25], inverse: false },
+  "interest_payments": { thresholds: [10, 20, 30, 40], inverse: true },
+  "fx_reserves": { thresholds: [50000000000, 150000000000, 300000000000, 600000000000], inverse: false },
+  "imports": { thresholds: [100000000000, 300000000000, 600000000000, 1000000000000], inverse: true },
+  "exports": { thresholds: [100000000000, 300000000000, 600000000000, 1000000000000], inverse: false },
+  "reserve_cover": { thresholds: [0.5, 1, 2, 3], inverse: false },
+  "exchange_rate_volatility": { thresholds: [2, 5, 10, 15], inverse: true },
+  "governance_score": { thresholds: [0.2, 0.4, 0.6, 0.8], inverse: false },
+  "political_stability": { thresholds: [0.2, 0.4, 0.6, 0.8], inverse: false },
+  "social_risk": { thresholds: [0.2, 0.4, 0.6, 0.8], inverse: true },
+  "climate_risk": { thresholds: [0.2, 0.4, 0.6, 0.8], inverse: true }
+};
+
 const TEMPLATES: Record<string, Partial<RatingModel>> = {
   "Advanced Economy": {
     weights: {},
@@ -162,7 +183,15 @@ export default function ModelBuilderPage() {
       delete trans[pid]
     } else {
       weights[pid] = 0
-      trans[pid] = { thresholds: [20, 40, 60, 80], inverse: false }
+      
+      const param = params.find(p => p.id === pid);
+      const slug = (param?.slug || "").toLowerCase();
+      const nameKey = (param?.name || "").toLowerCase().replace(/[\s-]/g, "_");
+      
+      // Apply professional thresholds if available, otherwise fallback to standard default
+      const defaultTrans = PROFESSIONAL_THRESHOLDS[slug] || PROFESSIONAL_THRESHOLDS[nameKey] || { thresholds: [20, 40, 60, 80], inverse: false };
+      
+      trans[pid] = { ...defaultTrans };
     }
     setSelectedModel({ ...selectedModel, weights, transformations: trans })
   }

@@ -1,30 +1,59 @@
+
 "use client"
 
 import { useState, useEffect } from "react"
-import { getCountries, getRatingHistory, Rating, Country } from "@/lib/store"
+import { getCountries, getRatingHistory, Rating, resetAllRatings } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Search, Filter, Download, ExternalLink } from "lucide-react"
+import { Search, Filter, Download, ExternalLink, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useToast } from "@/hooks/use-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 export default function RatingsHistoryPage() {
   const [ratings, setRatings] = useState<(Rating & { countryName: string })[]>([])
   const [search, setSearch] = useState("")
+  const { toast } = useToast()
+
+  async function load() {
+    const countries = await getCountries()
+    const all: any[] = []
+    for (const c of countries) {
+      const history = await getRatingHistory(c.id)
+      all.push(...history.map(r => ({ ...r, countryName: c.name })))
+    }
+    setRatings(all.sort((a, b) => {
+      const dateA = a.createdAt?.toDate?.() || new Date(0);
+      const dateB = b.createdAt?.toDate?.() || new Date(0);
+      return dateB.getTime() - dateA.getTime();
+    }))
+  }
 
   useEffect(() => {
-    async function load() {
-      const countries = await getCountries()
-      const all: any[] = []
-      for (const c of countries) {
-        const history = await getRatingHistory(c.id)
-        all.push(...history.map(r => ({ ...r, countryName: c.name })))
-      }
-      setRatings(all.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()))
-    }
     load()
   }, [])
+
+  const handleReset = async () => {
+    try {
+      await resetAllRatings();
+      toast({ title: "Data Reset Complete", description: "All historical rating sessions have been cleared." });
+      load();
+    } catch (e) {
+      toast({ title: "Reset Failed", variant: "destructive" });
+    }
+  }
 
   const filtered = ratings.filter(r => 
     r.countryName.toLowerCase().includes(search.toLowerCase()) ||
@@ -38,9 +67,32 @@ export default function RatingsHistoryPage() {
           <h1 className="text-3xl font-bold tracking-tight text-primary">Rating Archive</h1>
           <p className="text-muted-foreground mt-1">Audit trail of all sovereign credit rating sessions.</p>
         </div>
-        <Button variant="outline">
-          <Download className="w-4 h-4 mr-2" /> Export PDF Report
-        </Button>
+        <div className="flex gap-2">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="text-destructive hover:bg-destructive/10">
+                <RotateCcw className="w-4 h-4 mr-2" /> Reset All Data
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This action will permanently delete all historical rating results and dashboard data. Country registries, analytical models, and scales will NOT be affected.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                  Yes, Clear History
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          <Button variant="outline">
+            <Download className="w-4 h-4 mr-2" /> Export PDF
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -60,9 +112,6 @@ export default function RatingsHistoryPage() {
                             onChange={e => setSearch(e.target.value)}
                         />
                     </div>
-                    <Button variant="ghost" size="icon">
-                        <Filter className="w-4 h-4" />
-                    </Button>
                 </div>
             </div>
         </CardHeader>
@@ -70,7 +119,7 @@ export default function RatingsHistoryPage() {
           <Table className="financial-table">
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
+                <TableHead>Cycle</TableHead>
                 <TableHead>Sovereign Entity</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>Score</TableHead>
@@ -82,13 +131,12 @@ export default function RatingsHistoryPage() {
             <TableBody>
               {filtered.map((rating) => (
                 <TableRow key={rating.id} className="hover:bg-muted/50">
-                  <TableCell className="font-mono text-xs">{new Date(rating.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell className="font-mono text-xs font-bold text-primary">{rating.year || 'N/A'}</TableCell>
                   <TableCell className="font-semibold">{rating.countryName}</TableCell>
                   <TableCell><Badge variant="outline">{rating.modelId.toUpperCase()}</Badge></TableCell>
                   <TableCell className="font-bold">{rating.finalScore.toFixed(1)}%</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground line-through text-xs">{rating.initialRating}</span>
                         <span className="font-bold text-primary">{rating.overrideRating || rating.adjustedRating || rating.initialRating}</span>
                     </div>
                   </TableCell>
@@ -98,7 +146,7 @@ export default function RatingsHistoryPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="icon">
                         <ExternalLink className="w-4 h-4" />
                     </Button>
                   </TableCell>

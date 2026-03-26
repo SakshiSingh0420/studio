@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Search, MapPin, Loader2, Globe, Trash2 } from "lucide-react"
+import { Plus, Search, MapPin, Loader2, Globe, Trash2, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -47,11 +47,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useToast } from "@/hooks/use-toast"
 
 const DEMO_COUNTRIES: Partial<Country>[] = [
-  { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR", gdpSnapshot: 3400 },
-  { id: 'demo-us', name: "USA", region: "North America", incomeGroup: "Advanced", currency: "USD", gdpSnapshot: 25000 },
-  { id: 'demo-cn', name: "China", region: "East Asia", incomeGroup: "Emerging", currency: "CNY", gdpSnapshot: 18000 },
-  { id: 'demo-de', name: "Germany", region: "Western Europe", incomeGroup: "Advanced", currency: "EUR", gdpSnapshot: 4000 },
-  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL", gdpSnapshot: 1600 },
+  { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR", gdpSnapshot: 3400, year: 2025 },
+  { id: 'demo-us', name: "USA", region: "North America", incomeGroup: "Advanced", currency: "USD", gdpSnapshot: 25000, year: 2025 },
+  { id: 'demo-cn', name: "China", region: "East Asia", incomeGroup: "Emerging", currency: "CNY", gdpSnapshot: 18000, year: 2025 },
+  { id: 'demo-de', name: "Germany", region: "Western Europe", incomeGroup: "Advanced", currency: "EUR", gdpSnapshot: 4000, year: 2025 },
+  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL", gdpSnapshot: 1600, year: 2025 },
 ];
 
 export default function CountriesPage() {
@@ -73,6 +73,7 @@ export default function CountriesPage() {
     gdpPerCapita: 0,
     inflation: 0,
     dataYear: 2025,
+    year: 2025,
     primaryDataSource: "IMF",
     equityIndex: "",
     bondYield10Y: 0,
@@ -83,21 +84,20 @@ export default function CountriesPage() {
 
   useEffect(() => {
     setIsMounted(true);
-    // Correctly update dynamic values after hydration
     setNewCountry(prev => ({
       ...prev,
       dataYear: new Date().getFullYear(),
+      year: new Date().getFullYear(),
       scenarioName: `Base Case ${new Date().getFullYear()}`
     }));
   }, []);
 
-  // Merge DB countries with demo ones if DB is nearly empty
-  const countries = (dbCountries && dbCountries.length > 1) 
+  const countries = (dbCountries && dbCountries.length > 0) 
     ? dbCountries 
     : [...(dbCountries || []), ...DEMO_COUNTRIES.filter(d => !(dbCountries || []).some(c => c.name === d.name))];
 
   const handleAdd = async () => {
-    if (!newCountry.name || !newCountry.region || !newCountry.dataYear) return;
+    if (!newCountry.name || !newCountry.region || !newCountry.year) return;
     
     await addCountry(newCountry)
     setIsAdding(false)
@@ -111,6 +111,7 @@ export default function CountriesPage() {
       gdpPerCapita: 0,
       inflation: 0,
       dataYear: new Date().getFullYear(),
+      year: new Date().getFullYear(),
       primaryDataSource: "IMF",
       equityIndex: "",
       bondYield10Y: 0,
@@ -206,9 +207,15 @@ export default function CountriesPage() {
                     </div>
                 </div>
 
-                <div className="grid gap-2">
-                    <label className="text-xs font-bold uppercase text-muted-foreground">GDP Snapshot ($B)</label>
-                    <Input type="number" value={newCountry.gdpSnapshot} onChange={e => setNewCountry({...newCountry, gdpSnapshot: Number(e.target.value)})} suppressHydrationWarning />
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                        <label className="text-xs font-bold uppercase text-muted-foreground">GDP Snapshot ($B)</label>
+                        <Input type="number" value={newCountry.gdpSnapshot} onChange={e => setNewCountry({...newCountry, gdpSnapshot: Number(e.target.value)})} suppressHydrationWarning />
+                    </div>
+                    <div className="grid gap-2">
+                        <label className="text-xs font-bold uppercase text-muted-foreground">Base Year</label>
+                        <Input type="number" value={newCountry.year} onChange={e => setNewCountry({...newCountry, year: Number(e.target.value)})} suppressHydrationWarning />
+                    </div>
                 </div>
                 </div>
             </ScrollArea>
@@ -274,10 +281,15 @@ export default function CountriesPage() {
               </div>
             </CardHeader>
             <CardContent className="pt-6 space-y-6">
-              <div className="flex items-center gap-4 text-sm font-bold text-slate-700">
-                <Badge variant="secondary" className="font-bold">{country.incomeGroup}</Badge>
-                <span className="text-slate-300">|</span>
-                <span>{country.currency}</span>
+              <div className="flex items-center justify-between text-sm font-bold text-slate-700">
+                <div className="flex items-center gap-4">
+                  <Badge variant="secondary" className="font-bold">{country.incomeGroup}</Badge>
+                  <span className="text-slate-300">|</span>
+                  <span>{country.currency}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Calendar className="w-3 h-3" /> {country.year || country.dataYear || 2025}
+                </div>
               </div>
 
               <div className="pt-4 border-t">

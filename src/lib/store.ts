@@ -53,14 +53,12 @@ export const saveModel = async (m: any) => {
 export const setActiveModel = async (modelId: string, name: string) => {
   const batch = writeBatch(db);
   
-  // Deactivate all models with the same name (lineage)
   const q = query(collection(db, 'models'), where('name', '==', name));
   const snap = await getDocs(q);
   snap.docs.forEach(d => {
     batch.update(d.ref, { isActive: false });
   });
 
-  // Activate selected model
   batch.update(doc(db, 'models', modelId), { isActive: true });
   await batch.commit();
 };
@@ -68,7 +66,6 @@ export const setActiveModel = async (modelId: string, name: string) => {
 export const setDefaultModel = async (modelId: string) => {
   const batch = writeBatch(db);
   
-  // Set isDefault = false for all models
   const snap = await getDocs(collection(db, 'models'));
   snap.docs.forEach(d => {
     if (d.data().isDefault) {
@@ -76,7 +73,6 @@ export const setDefaultModel = async (modelId: string) => {
     }
   });
 
-  // Set selected model as default
   batch.update(doc(db, 'models', modelId), { isDefault: true });
   await batch.commit();
 };
@@ -106,13 +102,14 @@ export interface Country {
   gdpPerCapita: number;
   inflation: number;
   dataYear: number;
+  year?: number; // Added for explicit year tracking
   primaryDataSource: string;
   equityIndex?: string;
   bondYield10Y?: number;
   fxRate?: number;
   scenarioName?: string;
   lastUpdated?: Timestamp;
-  gdpSnapshot?: number; // Added for applicability
+  gdpSnapshot?: number;
 }
 export const getCountries = () => getAll<Country>('countries');
 export const addCountry = (c: any) => addDoc(collection(db, 'countries'), {
@@ -127,6 +124,7 @@ export interface Rating {
   countryId: string;
   modelId: string;
   scaleId: string;
+  year: number; // Added tracking year
   finalScore: number;
   initialRating: string;
   adjustedRating?: string;
@@ -160,6 +158,18 @@ export const updateRatingStatus = async (id: string, status: 'approved' | 'rejec
     committeeComments: reason || '',
     updatedAt: serverTimestamp()
   });
+};
+
+/**
+ * Resets all rating data for the prototype demo.
+ */
+export const resetAllRatings = async () => {
+  const snap = await getDocs(collection(db, 'ratings'));
+  const batch = writeBatch(db);
+  snap.docs.forEach(d => {
+    batch.delete(d.ref);
+  });
+  await batch.commit();
 };
 
 // FACT SHEETS

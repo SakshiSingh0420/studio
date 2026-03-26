@@ -3,14 +3,16 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { getCountries, getRatingHistory, Country, getActiveModels, getScales } from "@/lib/store"
+import { getCountries, Country, getActiveModels, getScales } from "@/lib/store"
 import { RatingModel, RatingScale } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Globe, ShieldCheck, ArrowRight, Settings2, Star, CheckCircle2, AlertCircle, Info } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Loader2, Globe, ShieldCheck, ArrowRight, Settings2, Star, CheckCircle2, AlertCircle, Info, Calendar } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 export default function RatingInitiationPage() {
     const { id } = useParams()
@@ -22,9 +24,9 @@ export default function RatingInitiationPage() {
     
     const [selectedModelId, setSelectedModelId] = useState<string>("")
     const [selectedScaleId, setSelectedScaleId] = useState<string>("")
+    const [targetYear, setTargetYear] = useState<number>(2025)
     const [loading, setLoading] = useState(true)
 
-    // Applicability Logic
     const sizeCategory = useMemo(() => {
         if (!country?.gdpSnapshot) return "Small";
         if (country.gdpSnapshot < 500) return "Small";
@@ -38,13 +40,8 @@ export default function RatingInitiationPage() {
         let score = 0;
         const app = model.applicability || {};
         
-        // marketType match (using region as proxy)
         if (app.marketType?.includes(country.region)) score += 50;
-        
-        // incomeGroup match
         if (app.incomeGroup?.includes(country.incomeGroup)) score += 25;
-        
-        // sizeCategory match
         if (app.sizeCategory?.includes(sizeCategory)) score += 25;
 
         if (score >= 75) return { score, label: "Highly Applicable", variant: "default" as const };
@@ -70,26 +67,17 @@ export default function RatingInitiationPage() {
                 ])
                 
                 const found = countriesData.find(c => c.id === id)
-                if (found) setCountry(found)
+                if (found) {
+                    setCountry(found)
+                    setTargetYear(found.year || found.dataYear || 2025)
+                }
                 
                 setModels(activeModels)
                 setScales(scalesData)
                 
-                // Rule: Automatically select default model if it exists and is active
                 const defaultModel = activeModels.find(m => m.isDefault);
                 if (defaultModel) {
                   setSelectedModelId(defaultModel.id);
-                } else if (activeModels.length > 0) {
-                  // Fallback: Select first available active model (highest applicability after sort)
-                  const sorted = [...activeModels].sort((a, b) => {
-                      // Note: getModelApplicability depends on country state, so we use it here safely
-                      // since country is usually available or fallback logic is fine
-                      return 0; // Handled by sortedModels in render
-                  });
-                  // We'll set it in a separate effect once sortedModels is ready if needed, 
-                  // or just let user select. Requirement said "DO NOT auto-select model" for applicability.
-                  // But previous requirement said "Automatically select default model".
-                  // I will stick to the default model selection but NOT auto-select based on applicability score.
                 }
 
                 if (scalesData.length > 0) setSelectedScaleId(scalesData[0].id)
@@ -104,7 +92,7 @@ export default function RatingInitiationPage() {
 
     const handleInitialize = () => {
         if (!selectedModelId || !selectedScaleId) return
-        router.push(`/rate/${id}?model=${selectedModelId}&scale=${selectedScaleId}`)
+        router.push(`/rate/${id}?model=${selectedModelId}&scale=${selectedScaleId}&year=${targetYear}`)
     }
 
     if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin w-8 h-8 text-primary" /></div>
@@ -159,6 +147,29 @@ export default function RatingInitiationPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-900 uppercase flex items-center gap-1">
+                                    <Calendar className="w-3 h-3" /> Target Year
+                                </label>
+                                <Input 
+                                    type="number" 
+                                    value={targetYear} 
+                                    onChange={e => setTargetYear(Number(e.target.value))} 
+                                    className="font-bold"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-900 uppercase">Rating Scale</label>
+                                <Select onValueChange={setSelectedScaleId} value={selectedScaleId}>
+                                    <SelectTrigger className="font-medium h-10"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <label className="text-xs font-bold text-slate-900 uppercase">Analytical Model</label>
@@ -198,17 +209,8 @@ export default function RatingInitiationPage() {
                                         );
                                       })
                                     ) : (
-                                      <div className="p-2 text-xs text-muted-foreground">No active models found. Please activate a model in settings.</div>
+                                      <div className="p-2 text-xs text-muted-foreground">No active models found.</div>
                                     )}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-900 uppercase">Rating Scale</label>
-                            <Select onValueChange={setSelectedScaleId} value={selectedScaleId}>
-                                <SelectTrigger className="font-medium h-12"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    {scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -224,5 +226,3 @@ export default function RatingInitiationPage() {
         </div>
     )
 }
-
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"

@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -48,6 +49,7 @@ export default function RatingExecutionPage() {
     
     const [selectedModel, setSelectedModel] = useState<RatingModel | null>(null)
     const [selectedScale, setSelectedScale] = useState<RatingScale | null>(null)
+    const [executionYear, setExecutionYear] = useState<number>(2025)
     
     const [calculation, setCalculation] = useState<any>(null)
     const [isGenerating, setIsGenerating] = useState(false)
@@ -79,6 +81,9 @@ export default function RatingExecutionPage() {
                 
                 const mId = searchParams.get('model')
                 const sId = searchParams.get('scale')
+                const yearStr = searchParams.get('year')
+                
+                if (yearStr) setExecutionYear(Number(yearStr))
                 
                 const initialModel = mId ? modelsData.find(m => m.id === mId) : modelsData[0]
                 const initialScale = sId ? scalesData.find(s => s.id === sId) : scalesData[0]
@@ -94,7 +99,6 @@ export default function RatingExecutionPage() {
         load()
     }, [id, searchParams])
 
-    // Precision Fix: Synchronized derived ratio display
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
@@ -111,7 +115,7 @@ export default function RatingExecutionPage() {
             const name = (p.name || "").toLowerCase();
             
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
-                const debt = context['government_debt'] || context['debt'] || context['government_debt'] || 0;
+                const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || 1;
                 results[p.id] = (debt / gdp) * 100;
             } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
@@ -181,7 +185,6 @@ export default function RatingExecutionPage() {
         }
     }
 
-    // AI Rationale Generation on Review Phase
     useEffect(() => {
         if (step === "review" && calculation && country && selectedModel && selectedScale && !rationale) {
             const generate = async () => {
@@ -225,12 +228,13 @@ export default function RatingExecutionPage() {
             countryId: country.id,
             modelId: selectedModel.id,
             scaleId: selectedScale.id,
+            year: executionYear,
             finalScore: calculation.finalScore,
             initialRating: calculation.initialRating,
             approvalStatus: 'pending',
             reason: rationale
         })
-        toast({ title: "Rating Session Finalized", description: `Rating for ${country.name} has been submitted for approval.` })
+        toast({ title: "Rating Session Finalized", description: `Rating for ${country.name} (${executionYear}) has been submitted for approval.` })
         router.push('/')
     }
 
@@ -242,7 +246,7 @@ export default function RatingExecutionPage() {
                 <div>
                     <h1 className="text-3xl font-black tracking-tighter text-slate-900">Execution: {country?.name}</h1>
                     <div className="flex items-center gap-2 mt-1">
-                        <p className="text-primary font-bold uppercase text-xs tracking-widest">{step} Phase</p>
+                        <Badge className="bg-primary/10 text-primary border-primary/20">{executionYear} Cycle</Badge>
                         <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
                         <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">{country?.region}</p>
                     </div>
@@ -282,8 +286,8 @@ export default function RatingExecutionPage() {
                                 <p className="font-black text-slate-900">{selectedScale?.name}</p>
                             </div>
                             <div className="space-y-1 pt-4 border-t">
-                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Currency Context</label>
-                                <p className="font-black text-slate-900">{country?.currency}</p>
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Analytical Year</label>
+                                <p className="font-black text-slate-900">{executionYear}</p>
                             </div>
                             <Button variant="ghost" size="sm" onClick={() => router.push(`/rate/${id}/init`)} className="w-full text-xs font-bold mt-4 border border-dashed text-primary hover:bg-primary/5">
                                 <Settings2 className="w-3 h-3 mr-2" /> Change Config
@@ -475,7 +479,7 @@ export default function RatingExecutionPage() {
                                         <div className="space-y-2">
                                             <Badge variant="outline" className="text-primary-foreground border-white/20 font-black tracking-widest text-[10px] uppercase px-4 py-1">Analytical Finalization</Badge>
                                             <CardTitle className="text-5xl font-black tracking-tighter mt-4">Executive Summary</CardTitle>
-                                            <p className="text-slate-400 font-medium text-lg">Professional credit designation for {country?.name}.</p>
+                                            <p className="text-slate-400 font-medium text-lg">Professional credit designation for {country?.name} ({executionYear}).</p>
                                         </div>
                                         <div className="flex gap-8">
                                             <div className="text-right">

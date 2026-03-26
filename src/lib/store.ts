@@ -42,7 +42,8 @@ export const saveModel = async (m: any) => {
       ...m,
       version: m.version ?? 1,
       status: m.status ?? 'draft',
-      isActive: m.isActive ?? false
+      isActive: m.isActive ?? false,
+      isDefault: m.isDefault ?? false
     };
     delete data.id;
     await setDoc(doc(db, 'models', id), data, { merge: true });
@@ -61,6 +62,22 @@ export const setActiveModel = async (modelId: string, name: string) => {
 
   // Activate selected model
   batch.update(doc(db, 'models', modelId), { isActive: true });
+  await batch.commit();
+};
+
+export const setDefaultModel = async (modelId: string) => {
+  const batch = writeBatch(db);
+  
+  // Set isDefault = false for all models
+  const snap = await getDocs(collection(db, 'models'));
+  snap.docs.forEach(d => {
+    if (d.data().isDefault) {
+      batch.update(d.ref, { isDefault: false });
+    }
+  });
+
+  // Set selected model as default
+  batch.update(doc(db, 'models', modelId), { isDefault: true });
   await batch.commit();
 };
 

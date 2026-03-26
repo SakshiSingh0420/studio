@@ -8,7 +8,7 @@ import { RatingModel, RatingScale } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Globe, ShieldCheck, ArrowRight, Settings2 } from "lucide-react"
+import { Loader2, Globe, ShieldCheck, ArrowRight, Settings2, Star } from "lucide-react"
 
 export default function RatingInitiationPage() {
     const { id } = useParams()
@@ -37,7 +37,15 @@ export default function RatingInitiationPage() {
                 setModels(activeModels)
                 setScales(scalesData)
                 
-                if (activeModels.length > 0) setSelectedModelId(activeModels[0].id)
+                // Rule 2: Automatically select default model if it exists and is active
+                const defaultModel = activeModels.find(m => m.isDefault);
+                if (defaultModel) {
+                  setSelectedModelId(defaultModel.id);
+                } else if (activeModels.length > 0) {
+                  // Fallback: Select first available active model
+                  setSelectedModelId(activeModels[0].id);
+                }
+
                 if (scalesData.length > 0) setSelectedScaleId(scalesData[0].id)
             } catch (error) {
                 console.error("Initialization Error:", error)
@@ -105,7 +113,14 @@ export default function RatingInitiationPage() {
                                 <SelectTrigger className="font-medium h-12"><SelectValue placeholder="Select an active model" /></SelectTrigger>
                                 <SelectContent>
                                     {models.length > 0 ? (
-                                      models.map(m => <SelectItem key={m.id} value={m.id}>{m.name} (v{m.version})</SelectItem>)
+                                      models.map(m => (
+                                        <SelectItem key={m.id} value={m.id}>
+                                          <div className="flex items-center gap-2">
+                                            {m.name} (v{m.version})
+                                            {m.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+                                          </div>
+                                        </SelectItem>
+                                      ))
                                     ) : (
                                       <div className="p-2 text-xs text-muted-foreground">No active models found. Please activate a model in settings.</div>
                                     )}

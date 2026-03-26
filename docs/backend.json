@@ -49,6 +49,7 @@
         "name": { "type": "string" },
         "version": { "type": "number" },
         "isActive": { "type": "boolean" },
+        "isDefault": { "type": "boolean" },
         "status": { "type": "string", "enum": ["draft", "published"] },
         "parentModelId": { "type": "string" },
         "weights": { 

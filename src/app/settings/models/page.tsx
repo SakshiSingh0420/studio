@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { getModels, saveModel, getParameters, deleteModel, setActiveModel } from "@/lib/store"
+import { getModels, saveModel, getParameters, deleteModel, setActiveModel, setDefaultModel } from "@/lib/store"
 import { RatingModel, Parameter, ModelTransformation } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { 
   Plus, Save, Layers, Settings2, AlertCircle, CheckCircle2, 
   Search, Filter, Zap, ChevronRight, Info, Trash2, 
-  Sparkles, BrainCircuit, Lock, Copy, History, Check 
+  Sparkles, BrainCircuit, Lock, Copy, History, Check, Star 
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -65,9 +65,9 @@ const PROFESSIONAL_THRESHOLDS: Record<string, ModelTransformation> = {
 };
 
 const TEMPLATES: Record<string, Partial<RatingModel>> = {
-  "Advanced Economy": { weights: {}, version: 1, name: "Standard Advanced Model", status: 'draft', isActive: false },
-  "Emerging Market": { weights: {}, version: 1, name: "Emerging Market Framework", status: 'draft', isActive: false },
-  "Frontier Market": { weights: {}, version: 1, name: "Frontier Risk Model", status: 'draft', isActive: false }
+  "Advanced Economy": { weights: {}, version: 1, name: "Standard Advanced Model", status: 'draft', isActive: false, isDefault: false },
+  "Emerging Market": { weights: {}, version: 1, name: "Emerging Market Framework", status: 'draft', isActive: false, isDefault: false },
+  "Frontier Market": { weights: {}, version: 1, name: "Frontier Risk Model", status: 'draft', isActive: false, isDefault: false }
 };
 
 export default function ModelBuilderPage() {
@@ -75,8 +75,6 @@ export default function ModelBuilderPage() {
   const [params, setParams] = useState<Parameter[]>([])
   const [selectedModel, setSelectedModel] = useState<Partial<RatingModel> | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
-  const [isAdvisorOpen, setIsAdvisorOpen] = useState(false)
-  const [advisorContext, setAdvisorContext] = useState({ classification: "Emerging", scenario: "Baseline" })
   const { toast } = useToast()
 
   const load = async () => {
@@ -120,7 +118,8 @@ export default function ModelBuilderPage() {
           ...selectedModel, 
           status,
           version: selectedModel.version ?? 1,
-          isActive: selectedModel.isActive ?? false
+          isActive: selectedModel.isActive ?? false,
+          isDefault: selectedModel.isDefault ?? false
         };
         const savedId = await saveModel(dataToSave);
         setSelectedModel(prev => prev ? { ...prev, id: savedId, status } : null);
@@ -140,6 +139,7 @@ export default function ModelBuilderPage() {
       version: 1,
       status: 'draft',
       isActive: false,
+      isDefault: false,
       parentModelId: undefined
     };
     setSelectedModel(clonedModel as any);
@@ -154,6 +154,7 @@ export default function ModelBuilderPage() {
       version: (selectedModel.version ?? 1) + 1,
       status: 'draft',
       isActive: false,
+      isDefault: false,
       parentModelId: selectedModel.id
     };
     setSelectedModel(nextVersion as any);
@@ -170,6 +171,22 @@ export default function ModelBuilderPage() {
     await load();
     setSelectedModel(prev => prev ? { ...prev, isActive: checked } : null);
     toast({ title: checked ? "Model Activated" : "Model Deactivated" });
+  }
+
+  const handleSetDefault = async (checked: boolean) => {
+    if (!selectedModel?.id) return;
+    if (selectedModel.status !== 'published') {
+      toast({ title: "Publication Required", description: "Only published models can be marked as default.", variant: "destructive" });
+      return;
+    }
+    if (!checked) {
+      toast({ title: "Constraint", description: "One model must always be default. Select another model to unset this one.", variant: "destructive" });
+      return;
+    }
+    await setDefaultModel(selectedModel.id);
+    await load();
+    setSelectedModel(prev => prev ? { ...prev, isDefault: true } : null);
+    toast({ title: "Default Framework Updated" });
   }
 
   const handleDelete = async (id: string) => {
@@ -216,14 +233,6 @@ export default function ModelBuilderPage() {
       }
   }
 
-  const aiRecommendation = useMemo(() => {
-    const { classification, scenario } = advisorContext;
-    let model = "Emerging Market Framework";
-    if (classification === "Advanced") model = "Standard Advanced Model";
-    else if (classification === "Frontier") model = "Frontier Risk Model";
-    return { model, reason: `${classification} economy with ${scenario} context.`, paramsList: ["GDP Growth", "Inflation", "Debt to GDP"], focusParams: ["Balanced Weight Distribution"] };
-  }, [advisorContext]);
-
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -243,7 +252,7 @@ export default function ModelBuilderPage() {
                   </SelectContent>
               </Select>
             )}
-            <Button onClick={() => setSelectedModel({ name: "New Model", version: 1, weights: {}, transformations: {}, status: 'draft', isActive: false })}>
+            <Button onClick={() => setSelectedModel({ name: "New Model", version: 1, weights: {}, transformations: {}, status: 'draft', isActive: false, isDefault: false })}>
                 <Plus className="w-4 h-4 mr-2" /> New Framework
             </Button>
         </div>
@@ -260,14 +269,17 @@ export default function ModelBuilderPage() {
                     <div 
                         key={m.id} 
                         className={cn(
-                            "group cursor-pointer p-3 rounded-lg border bg-card transition-all hover:border-primary",
+                            "group cursor-pointer p-3 rounded-lg border bg-card transition-all hover:border-primary relative",
                             selectedModel?.id === m.id && "border-primary ring-1 ring-primary shadow-sm"
                         )} 
                         onClick={() => setSelectedModel(m)}
                     >
                         <div className="flex justify-between items-start">
                             <div className="flex-1 min-w-0">
-                                <p className="font-bold text-sm truncate">{m.name}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-bold text-sm truncate">{m.name}</p>
+                                  {m.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+                                </div>
                                 <div className="flex items-center gap-2 mt-1">
                                   <Badge variant="outline" className="text-[9px] h-4 font-mono">v{m.version}</Badge>
                                   <Badge variant={m.status === 'published' ? 'default' : 'secondary'} className="text-[9px] h-4">
@@ -310,13 +322,21 @@ export default function ModelBuilderPage() {
                     </div>
                     
                     {isPublished ? (
-                      <div className="flex gap-2">
-                        <div className="flex items-center gap-2 mr-4">
-                          <span className="text-xs font-bold uppercase text-muted-foreground">Active</span>
-                          <Switch checked={selectedModel.isActive} onCheckedChange={handleActivate} />
+                      <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex items-center gap-4 border-l pl-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-tighter">Active</span>
+                            <Switch checked={selectedModel.isActive} onCheckedChange={handleActivate} />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-tighter">Default</span>
+                            <Switch checked={selectedModel.isDefault} onCheckedChange={handleSetDefault} />
+                          </div>
                         </div>
-                        <Button variant="outline" onClick={handleNewVersion}><History className="w-4 h-4 mr-2" /> New Version</Button>
-                        <Button variant="outline" onClick={handleClone}><Copy className="w-4 h-4 mr-2" /> Clone</Button>
+                        <div className="flex gap-2">
+                          <Button variant="outline" size="sm" onClick={handleNewVersion}><History className="w-3.5 h-3.5 mr-2" /> New Version</Button>
+                          <Button variant="outline" size="sm" onClick={handleClone}><Copy className="w-3.5 h-3.5 mr-2" /> Clone</Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex gap-2">
@@ -433,7 +453,7 @@ export default function ModelBuilderPage() {
             <div className="h-[600px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl bg-muted/20">
               <Settings2 className="w-12 h-12 text-primary opacity-20 mb-4" />
               <p className="text-muted-foreground font-semibold">Select or create an analytical framework.</p>
-              <Button variant="outline" className="mt-6" onClick={() => setSelectedModel({ name: "New Model", version: 1, weights: {}, transformations: {}, status: 'draft', isActive: false })}>
+              <Button variant="outline" className="mt-6" onClick={() => setSelectedModel({ name: "New Model", version: 1, weights: {}, transformations: {}, status: 'draft', isActive: false, isDefault: false })}>
                   <Plus className="w-4 h-4 mr-2" /> Create New Model
               </Button>
             </div>

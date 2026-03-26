@@ -23,6 +23,7 @@ export type RatingModel = {
   name: string;
   version: number;
   isActive: boolean;
+  isDefault: boolean;
   status: "draft" | "published";
   parentModelId?: string;
   weights: Record<string, number>; // paramId -> weight
@@ -95,7 +96,7 @@ export function runDynamicRating(
 
   // 2. Initial Context Population (Raw Values)
   parameters.forEach(p => {
-    const val = Number(valuesById[p.id] ?? 0);
+    const val = (valuesById[p.id] !== undefined && valuesById[p.id] !== null && valuesById[p.id] !== "") ? Number(valuesById[p.id]) : 0;
     context[p.id] = val;
     context[normalize(p.id)] = val;
     if (p.slug) {

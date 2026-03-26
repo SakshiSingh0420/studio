@@ -61,6 +61,7 @@ export default function CountriesPage() {
 
   const [search, setSearch] = useState("")
   const [isAdding, setIsAdding] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
   const [newCountry, setNewCountry] = useState<Partial<Country>>({
     name: "",
     region: "",
@@ -79,6 +80,7 @@ export default function CountriesPage() {
   })
 
   useEffect(() => {
+    setIsMounted(true);
     // Correctly update dynamic values after hydration
     setNewCountry(prev => ({
       ...prev,
@@ -161,7 +163,7 @@ export default function CountriesPage() {
         </div>
         <Dialog open={isAdding} onOpenChange={setIsAdding}>
           <DialogTrigger asChild>
-            <Button className="bg-primary hover:bg-primary/90 font-bold shadow-md">
+            <Button className="bg-primary hover:bg-primary/90 font-bold shadow-md" suppressHydrationWarning>
               <Plus className="w-4 h-4 mr-2" /> Register Sovereign
             </Button>
           </DialogTrigger>
@@ -175,11 +177,11 @@ export default function CountriesPage() {
                 <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                         <label className="text-xs font-bold uppercase text-muted-foreground">Country Name</label>
-                        <Input value={newCountry.name} onChange={e => setNewCountry({...newCountry, name: e.target.value})} placeholder="e.g. India" />
+                        <Input value={newCountry.name} onChange={e => setNewCountry({...newCountry, name: e.target.value})} placeholder="e.g. India" suppressHydrationWarning />
                     </div>
                     <div className="grid gap-2">
                         <label className="text-xs font-bold uppercase text-muted-foreground">Region</label>
-                        <Input value={newCountry.region} onChange={e => setNewCountry({...newCountry, region: e.target.value})} placeholder="e.g. Asia" />
+                        <Input value={newCountry.region} onChange={e => setNewCountry({...newCountry, region: e.target.value})} placeholder="e.g. Asia" suppressHydrationWarning />
                     </div>
                 </div>
 
@@ -197,7 +199,7 @@ export default function CountriesPage() {
                     </div>
                     <div className="grid gap-2">
                         <label className="text-xs font-bold uppercase text-muted-foreground">Reporting Currency</label>
-                        <Input value={newCountry.currency} onChange={e => setNewCountry({...newCountry, currency: e.target.value})} />
+                        <Input value={newCountry.currency} onChange={e => setNewCountry({...newCountry, currency: e.target.value})} suppressHydrationWarning />
                     </div>
                 </div>
                 </div>
@@ -217,6 +219,7 @@ export default function CountriesPage() {
                 placeholder="Search sovereigns..." 
                 value={search}
                 onChange={e => setSearch(e.target.value)}
+                suppressHydrationWarning
             />
         </div>
       </div>

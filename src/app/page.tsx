@@ -34,6 +34,7 @@ export default function DashboardPage() {
   const db = useFirestore();
   const [selectedCountryIds, setSelectedCountryIds] = useState<string[]>([])
   const [transitionData, setTransitionData] = useState<any[]>([])
+  const [isMounted, setIsMounted] = useState(false)
 
   // Real-time countries collection
   const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
@@ -50,6 +51,10 @@ export default function DashboardPage() {
     query(collection(db, 'ratings'), orderBy('createdAt', 'asc')), 
   [db]);
   const { data: allRatings } = useCollection<Rating>(allRatingsQuery);
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   // Default selection to first few countries if none selected
   useEffect(() => {
@@ -318,7 +323,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="pt-8 px-8 pb-8">
             <div className="space-y-4">
-              {recentRatings.length === 0 ? (
+              {!isMounted || recentRatings.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 space-y-3 opacity-30">
                     <Clock className="w-10 h-10" />
                     <p className="text-xs font-black uppercase tracking-widest">No Recent Activity</p>

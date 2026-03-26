@@ -24,13 +24,14 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide } from "lucide-react"
+import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide, Sparkles, FileText, ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -50,6 +51,7 @@ export default function RatingExecutionPage() {
     
     const [calculation, setCalculation] = useState<any>(null)
     const [isGenerating, setIsGenerating] = useState(false)
+    const [isGeneratingRationale, setIsGeneratingRationale] = useState(false)
     const [rationale, setRationale] = useState("")
     const [step, setStep] = useState<"input" | "calculate" | "review">("input")
     const [loading, setLoading] = useState(true)
@@ -75,7 +77,6 @@ export default function RatingExecutionPage() {
                 setScales(scalesData)
                 setParameters(paramsData)
                 
-                // Read model/scale from URL if provided (from init screen)
                 const mId = searchParams.get('model')
                 const sId = searchParams.get('scale')
                 
@@ -101,34 +102,25 @@ export default function RatingExecutionPage() {
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-            
             context[p.id] = val;
-            if (p.slug) {
-                const normalizedSlug = p.slug.toLowerCase().replace(/[-\s]/g, '_');
-                context[normalizedSlug] = val;
-            }
-            if (p.name) {
-                const normalizedName = p.name.toLowerCase().replace(/[\s-]/g, '_');
-                context[normalizedName] = val;
-            }
         });
         
         const results: Record<string, number> = {};
         parameters.filter(p => p.type === 'derived').forEach(p => {
-            const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
-            const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+            const slug = (p.slug || "").toLowerCase();
+            const name = (p.name || "").toLowerCase();
             
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
-                const gdp = context['gdp'] || context['nominal_gdp'] || 1;
+                const gdp = context['gdp'] || 1;
                 results[p.id] = (debt / gdp) * 100;
             } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
-                const res = context['fx_reserves'] || context['reserves'] || 0;
+                const res = context['fx_reserves'] || 0;
                 const imp = context['imports'] || 1;
                 results[p.id] = res / imp;
             } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
-                const int = context['interest_payments'] || context['interest'] || 0;
-                const rev = context['government_revenue'] || context['revenue'] || 1;
+                const int = context['interest_payments'] || 0;
+                const rev = context['government_revenue'] || 1;
                 results[p.id] = (int / rev) * 100;
             } else if (p.formula) {
                 results[p.id] = evaluateFormula(p.formula, context);
@@ -170,7 +162,6 @@ export default function RatingExecutionPage() {
             fx_reserves: 600000000000,
             imports: 700000000000,
             exports: 670000000000,
-            fiscal_balance: -6,
             political_stability: 0.5,
             governance_score: 0.6,
             climate_risk: 0.4,
@@ -186,9 +177,7 @@ export default function RatingExecutionPage() {
             if (p.type !== 'raw') return;
             const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
             const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-            
             const val = demoData[slug] ?? demoData[name] ?? demoData[p.id];
-            
             if (val !== undefined) {
                 nextFactSheet[p.id] = val;
                 filled.add(p.id);
@@ -200,6 +189,43 @@ export default function RatingExecutionPage() {
         setIsGenerating(false);
         toast({ title: "Demo Data Populated", description: "Harvested latest sovereign benchmarks." })
     }
+
+    // AI Rationale Generation on Review Phase
+    useEffect(() => {
+        if (step === "review" && calculation && country && selectedModel && selectedScale && !rationale) {
+            const generate = async () => {
+                setIsGeneratingRationale(true);
+                try {
+                    const res = await generateRatingRationale({
+                        country: { 
+                            id: country.id, 
+                            name: country.name, 
+                            region: country.region, 
+                            incomeGroup: country.incomeGroup,
+                            currency: country.currency,
+                            population: country.population,
+                            gdp: country.nominalGdp
+                        },
+                        factSheetData: factSheet as any,
+                        model: { id: selectedModel.id, name: selectedModel.name, weights: selectedModel.weights },
+                        ratingScale: { id: selectedScale.id, name: selectedScale.name, mapping: selectedScale.mapping },
+                        derivedMetrics: liveDerivedMetrics as any,
+                        transformedScores: calculation.transformedScores,
+                        weightedScores: calculation.weightedScores,
+                        finalScore: calculation.finalScore,
+                        initialRating: calculation.initialRating
+                    });
+                    setRationale(res.rationale);
+                } catch (error) {
+                    console.error("AI Generation Error:", error);
+                    toast({ variant: "destructive", title: "AI Generation Failed", description: "Could not generate analytical narrative." });
+                } finally {
+                    setIsGeneratingRationale(false);
+                }
+            };
+            generate();
+        }
+    }, [step, calculation, country, selectedModel, selectedScale, factSheet, liveDerivedMetrics, rationale, toast]);
 
     const handleFinalize = async () => {
         if (!calculation || !country || !selectedModel || !selectedScale) return;
@@ -213,7 +239,7 @@ export default function RatingExecutionPage() {
             approvalStatus: 'pending',
             reason: rationale
         })
-        toast({ title: "Rating Session Submitted" })
+        toast({ title: "Rating Session Finalized", description: `Rating for ${country.name} has been submitted for approval.` })
         router.push('/')
     }
 
@@ -224,28 +250,49 @@ export default function RatingExecutionPage() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4"> 
                 <div>
                     <h1 className="text-3xl font-black tracking-tighter text-slate-900">Execution: {country?.name}</h1>
-                    <p className="text-primary font-bold uppercase text-xs tracking-widest mt-1">{step} Phase</p>
+                    <div className="flex items-center gap-2 mt-1">
+                        <p className="text-primary font-bold uppercase text-xs tracking-widest">{step} Phase</p>
+                        <div className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                        <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">{country?.region}</p>
+                    </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => router.push(`/countries`)} className="font-semibold">Cancel</Button>
+                    {step !== "review" && (
+                        <Button variant="outline" onClick={() => router.push(`/countries`)} className="font-semibold">Cancel</Button>
+                    )}
+                    {step === "review" && (
+                        <Button variant="outline" onClick={() => setStep("calculate")} className="font-semibold">
+                            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Calculation
+                        </Button>
+                    )}
                     {step === "input" && <Button onClick={handleRun} className="bg-primary font-bold shadow-md hover:shadow-lg transition-all"><Calculator className="w-4 h-4 mr-2" /> Run Analysis</Button>}
                     {step === "calculate" && <Button onClick={() => setStep("review")} className="bg-primary font-bold">Continue to Review <ChevronRight className="w-4 h-4 ml-2" /></Button>}
-                    {step === "review" && <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white font-bold"><CheckCircle className="w-4 h-4 mr-2" /> Finalize Rating</Button>}
+                    {step === "review" && (
+                        <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg">
+                            <CheckCircle className="w-4 h-4 mr-2" /> Finalize Rating
+                        </Button>
+                    )}
                 </div>
             </div>
 
             <div className="grid gap-8 lg:grid-cols-12">
                 <div className="lg:col-span-3">
                     <Card className="border-2 shadow-sm">
-                        <CardHeader className="bg-slate-50 border-b pb-4"><CardTitle className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Active Framework</CardTitle></CardHeader>
+                        <CardHeader className="bg-slate-50 border-b pb-4">
+                            <CardTitle className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Session Details</CardTitle>
+                        </CardHeader>
                         <CardContent className="space-y-6 pt-6">
                             <div className="space-y-1">
-                                <label className="text-xs font-bold text-muted-foreground uppercase">Model</label>
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Analytical Model</label>
                                 <p className="font-black text-slate-900">{selectedModel?.name}</p>
                             </div>
                             <div className="space-y-1 pt-4 border-t">
-                                <label className="text-xs font-bold text-muted-foreground uppercase">Scale</label>
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Rating Scale</label>
                                 <p className="font-black text-slate-900">{selectedScale?.name}</p>
+                            </div>
+                            <div className="space-y-1 pt-4 border-t">
+                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Currency Context</label>
+                                <p className="font-black text-slate-900">{country?.currency}</p>
                             </div>
                             <Button variant="ghost" size="sm" onClick={() => router.push(`/rate/${id}/init`)} className="w-full text-xs font-bold mt-4 border border-dashed text-primary hover:bg-primary/5">
                                 <Settings2 className="w-3 h-3 mr-2" /> Change Config
@@ -427,6 +474,98 @@ export default function RatingExecutionPage() {
                                 </div>
                             </CardContent>
                         </Card>
+                    )}
+
+                    {step === "review" && calculation && (
+                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <Card className="border-2 overflow-hidden">
+                                <CardHeader className="bg-slate-900 text-white py-12 px-12 border-b-8 border-slate-800">
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                                        <div className="space-y-2">
+                                            <Badge variant="outline" className="text-primary-foreground border-white/20 font-black tracking-widest text-[10px] uppercase px-4 py-1">Analytical Finalization</Badge>
+                                            <CardTitle className="text-5xl font-black tracking-tighter mt-4">Executive Summary</CardTitle>
+                                            <p className="text-slate-400 font-medium text-lg">Professional credit designation for {country?.name}.</p>
+                                        </div>
+                                        <div className="flex gap-8">
+                                            <div className="text-right">
+                                                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1">Final Score</p>
+                                                <p className="text-4xl font-black tracking-tighter">{calculation.finalScore.toFixed(1)}%</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1">Implied Rating</p>
+                                                <p className="text-5xl font-black tracking-tighter text-primary-foreground">{calculation.initialRating}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-0">
+                                    <div className="p-12 space-y-8">
+                                        <div className="flex items-center gap-4">
+                                            <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                                                <FileText className="w-5 h-5" />
+                                            </div>
+                                            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Analytical Rationale</h3>
+                                            <div className="h-1 bg-slate-100 flex-1 rounded-full" />
+                                            {isGeneratingRationale && (
+                                                <div className="flex items-center gap-2 text-primary font-bold animate-pulse">
+                                                    <Sparkles className="w-4 h-4 animate-spin-slow" />
+                                                    <span className="text-xs uppercase tracking-widest">AI Generating Narrative...</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="relative group">
+                                            <Textarea 
+                                                className="min-h-[400px] text-lg font-medium leading-relaxed p-8 border-2 border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/5 transition-all bg-slate-50/50"
+                                                placeholder="Analytical justification for the credit rating..."
+                                                value={rationale}
+                                                onChange={(e) => setRationale(e.target.value)}
+                                            />
+                                            {isGeneratingRationale && (
+                                                <div className="absolute inset-0 bg-white/60 backdrop-blur-[2px] flex items-center justify-center rounded-lg z-10">
+                                                    <Loader2 className="w-10 h-10 animate-spin text-primary" />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8">
+                                            <Card className="bg-slate-50 border-none shadow-none">
+                                                <CardContent className="p-6">
+                                                    <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4">Key Credit Strengths</h4>
+                                                    <ul className="space-y-2">
+                                                        {Object.entries(calculation.transformedScores)
+                                                            .filter(([_, score]: any) => score >= 4)
+                                                            .slice(0, 3)
+                                                            .map(([pid, _]) => (
+                                                                <li key={pid} className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                                                                    <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                                                                    {parameters.find(p => p.id === pid)?.name || pid}
+                                                                </li>
+                                                            ))}
+                                                    </ul>
+                                                </CardContent>
+                                            </Card>
+                                            <Card className="bg-slate-50 border-none shadow-none">
+                                                <CardContent className="p-6">
+                                                    <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4">Risk Constraints</h4>
+                                                    <ul className="space-y-2">
+                                                        {Object.entries(calculation.transformedScores)
+                                                            .filter(([_, score]: any) => score <= 2)
+                                                            .slice(0, 3)
+                                                            .map(([pid, _]) => (
+                                                                <li key={pid} className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                                                                    <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                                                                    {parameters.find(p => p.id === pid)?.name || pid}
+                                                                </li>
+                                                            ))}
+                                                    </ul>
+                                                </CardContent>
+                                            </Card>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
                     )}
                 </div>
             </div>

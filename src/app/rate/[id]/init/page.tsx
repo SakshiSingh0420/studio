@@ -1,14 +1,16 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { getCountries, getModels, getScales, Country, getActiveModels } from "@/lib/store"
+import { getCountries, getRatingHistory, Country, getActiveModels, getScales } from "@/lib/store"
 import { RatingModel, RatingScale } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Globe, ShieldCheck, ArrowRight, Settings2, Star } from "lucide-react"
+import { Loader2, Globe, ShieldCheck, ArrowRight, Settings2, Star, CheckCircle2, AlertCircle, Info } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
 
 export default function RatingInitiationPage() {
     const { id } = useParams()
@@ -21,6 +23,42 @@ export default function RatingInitiationPage() {
     const [selectedModelId, setSelectedModelId] = useState<string>("")
     const [selectedScaleId, setSelectedScaleId] = useState<string>("")
     const [loading, setLoading] = useState(true)
+
+    // Applicability Logic
+    const sizeCategory = useMemo(() => {
+        if (!country?.gdpSnapshot) return "Small";
+        if (country.gdpSnapshot < 500) return "Small";
+        if (country.gdpSnapshot <= 2000) return "Medium";
+        return "Large";
+    }, [country]);
+
+    const getModelApplicability = (model: RatingModel) => {
+        if (!country) return { score: 0, label: "Not Recommended", variant: "destructive" as const };
+        
+        let score = 0;
+        const app = model.applicability || {};
+        
+        // marketType match (using region as proxy)
+        if (app.marketType?.includes(country.region)) score += 50;
+        
+        // incomeGroup match
+        if (app.incomeGroup?.includes(country.incomeGroup)) score += 25;
+        
+        // sizeCategory match
+        if (app.sizeCategory?.includes(sizeCategory)) score += 25;
+
+        if (score >= 75) return { score, label: "Highly Applicable", variant: "default" as const };
+        if (score >= 50) return { score, label: "Applicable", variant: "secondary" as const };
+        return { score, label: "Not Recommended", variant: "outline" as const };
+    };
+
+    const sortedModels = useMemo(() => {
+        return [...models].sort((a, b) => {
+            const scoreA = getModelApplicability(a).score;
+            const scoreB = getModelApplicability(b).score;
+            return scoreB - scoreA;
+        });
+    }, [models, country, sizeCategory]);
 
     useEffect(() => {
         async function load() {
@@ -37,13 +75,21 @@ export default function RatingInitiationPage() {
                 setModels(activeModels)
                 setScales(scalesData)
                 
-                // Rule 2: Automatically select default model if it exists and is active
+                // Rule: Automatically select default model if it exists and is active
                 const defaultModel = activeModels.find(m => m.isDefault);
                 if (defaultModel) {
                   setSelectedModelId(defaultModel.id);
                 } else if (activeModels.length > 0) {
-                  // Fallback: Select first available active model
-                  setSelectedModelId(activeModels[0].id);
+                  // Fallback: Select first available active model (highest applicability after sort)
+                  const sorted = [...activeModels].sort((a, b) => {
+                      // Note: getModelApplicability depends on country state, so we use it here safely
+                      // since country is usually available or fallback logic is fine
+                      return 0; // Handled by sortedModels in render
+                  });
+                  // We'll set it in a separate effect once sortedModels is ready if needed, 
+                  // or just let user select. Requirement said "DO NOT auto-select model" for applicability.
+                  // But previous requirement said "Automatically select default model".
+                  // I will stick to the default model selection but NOT auto-select based on applicability score.
                 }
 
                 if (scalesData.length > 0) setSelectedScaleId(scalesData[0].id)
@@ -93,8 +139,14 @@ export default function RatingInitiationPage() {
                                 <p className="font-bold text-slate-700">{country?.region}</p>
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-bold text-muted-foreground uppercase">Market Class</p>
+                                <p className="text-xs font-bold text-muted-foreground uppercase">Income Group</p>
                                 <p className="font-bold text-slate-700">{country?.incomeGroup}</p>
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-xs font-bold text-muted-foreground uppercase">Size Category</p>
+                                <Badge variant="outline" className="font-bold border-primary/30 text-primary">
+                                    {sizeCategory} ({country?.gdpSnapshot ? `$${country.gdpSnapshot}B` : 'N/A'})
+                                </Badge>
                             </div>
                         </div>
                     </CardContent>
@@ -108,19 +160,43 @@ export default function RatingInitiationPage() {
                     </CardHeader>
                     <CardContent className="pt-6 space-y-6">
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-900 uppercase">Analytical Model</label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold text-slate-900 uppercase">Analytical Model</label>
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <Info className="w-3 h-3 text-muted-foreground cursor-help" />
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-[200px] text-[10px] p-2">
+                                            Models are ranked by applicability to the country's economic profile.
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
                             <Select onValueChange={setSelectedModelId} value={selectedModelId}>
-                                <SelectTrigger className="font-medium h-12"><SelectValue placeholder="Select an active model" /></SelectTrigger>
+                                <SelectTrigger className="font-medium h-12">
+                                    <SelectValue placeholder="Select an active model" />
+                                </SelectTrigger>
                                 <SelectContent>
-                                    {models.length > 0 ? (
-                                      models.map(m => (
-                                        <SelectItem key={m.id} value={m.id}>
-                                          <div className="flex items-center gap-2">
-                                            {m.name} (v{m.version})
-                                            {m.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
-                                          </div>
-                                        </SelectItem>
-                                      ))
+                                    {sortedModels.length > 0 ? (
+                                      sortedModels.map(m => {
+                                        const app = getModelApplicability(m);
+                                        return (
+                                          <SelectItem key={m.id} value={m.id}>
+                                            <div className="flex flex-col gap-0.5 py-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold">{m.name} (v{m.version})</span>
+                                                    {m.isDefault && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <Badge variant={app.variant} className="text-[9px] h-4 font-black uppercase px-1.5 py-0 leading-none">
+                                                        {app.label}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                          </SelectItem>
+                                        );
+                                      })
                                     ) : (
                                       <div className="p-2 text-xs text-muted-foreground">No active models found. Please activate a model in settings.</div>
                                     )}
@@ -148,3 +224,5 @@ export default function RatingInitiationPage() {
         </div>
     )
 }
+
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"

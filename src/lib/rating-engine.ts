@@ -28,6 +28,11 @@ export type RatingModel = {
   parentModelId?: string;
   weights: Record<string, number>; // paramId -> weight
   transformations: Record<string, ModelTransformation>; // paramId -> config
+  applicability?: { // Added for fit-guidance
+    marketType?: string[];
+    incomeGroup?: string[];
+    sizeCategory?: string[];
+  };
 };
 
 export type RatingScaleEntry = {

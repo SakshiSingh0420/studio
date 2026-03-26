@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from "react"
@@ -46,11 +47,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useToast } from "@/hooks/use-toast"
 
 const DEMO_COUNTRIES: Partial<Country>[] = [
-  { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR" },
-  { id: 'demo-us', name: "USA", region: "North America", incomeGroup: "Advanced", currency: "USD" },
-  { id: 'demo-cn', name: "China", region: "East Asia", incomeGroup: "Emerging", currency: "CNY" },
-  { id: 'demo-de', name: "Germany", region: "Western Europe", incomeGroup: "Advanced", currency: "EUR" },
-  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL" },
+  { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR", gdpSnapshot: 3400 },
+  { id: 'demo-us', name: "USA", region: "North America", incomeGroup: "Advanced", currency: "USD", gdpSnapshot: 25000 },
+  { id: 'demo-cn', name: "China", region: "East Asia", incomeGroup: "Emerging", currency: "CNY", gdpSnapshot: 18000 },
+  { id: 'demo-de', name: "Germany", region: "Western Europe", incomeGroup: "Advanced", currency: "EUR", gdpSnapshot: 4000 },
+  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL", gdpSnapshot: 1600 },
 ];
 
 export default function CountriesPage() {
@@ -76,7 +77,8 @@ export default function CountriesPage() {
     equityIndex: "",
     bondYield10Y: 0,
     fxRate: 1,
-    scenarioName: "Base Case 2025"
+    scenarioName: "Base Case 2025",
+    gdpSnapshot: 0
   })
 
   useEffect(() => {
@@ -113,7 +115,8 @@ export default function CountriesPage() {
       equityIndex: "",
       bondYield10Y: 0,
       fxRate: 1,
-      scenarioName: `Base Case ${new Date().getFullYear()}`
+      scenarioName: `Base Case ${new Date().getFullYear()}`,
+      gdpSnapshot: 0
     })
     toast({ title: "Sovereign Registered", description: `${newCountry.name} has been added to the registry.` });
   }
@@ -201,6 +204,11 @@ export default function CountriesPage() {
                         <label className="text-xs font-bold uppercase text-muted-foreground">Reporting Currency</label>
                         <Input value={newCountry.currency} onChange={e => setNewCountry({...newCountry, currency: e.target.value})} suppressHydrationWarning />
                     </div>
+                </div>
+
+                <div className="grid gap-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">GDP Snapshot ($B)</label>
+                    <Input type="number" value={newCountry.gdpSnapshot} onChange={e => setNewCountry({...newCountry, gdpSnapshot: Number(e.target.value)})} suppressHydrationWarning />
                 </div>
                 </div>
             </ScrollArea>

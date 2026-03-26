@@ -112,6 +112,7 @@ export interface Country {
   fxRate?: number;
   scenarioName?: string;
   lastUpdated?: Timestamp;
+  gdpSnapshot?: number; // Added for applicability
 }
 export const getCountries = () => getAll<Country>('countries');
 export const addCountry = (c: any) => addDoc(collection(db, 'countries'), {

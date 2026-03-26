@@ -258,14 +258,6 @@ export default function CountriesPage() {
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Currency</p>
                   <p className="text-sm font-black text-slate-900">{country.currency}</p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Base GDP</p>
-                  <p className="text-sm font-black text-slate-900">${country.nominalGdp}B</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Population</p>
-                  <p className="text-sm font-black text-slate-900">{country.population}M</p>
-                </div>
               </div>
 
               <div className="pt-4 border-t flex gap-2">

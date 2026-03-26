@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { 
     getCountries, 
     getFactSheet, 
@@ -35,6 +35,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 export default function RatingExecutionPage() {
     const { id } = useParams()
     const router = useRouter()
+    const searchParams = useSearchParams()
     const { toast } = useToast()
     
     const [country, setCountry] = useState<Country | null>(null)
@@ -74,8 +75,15 @@ export default function RatingExecutionPage() {
                 setScales(scalesData)
                 setParameters(paramsData)
                 
-                if (modelsData.length > 0) setSelectedModel(modelsData[0])
-                if (scalesData.length > 0) setSelectedScale(scalesData[0])
+                // Read model/scale from URL if provided (from init screen)
+                const mId = searchParams.get('model')
+                const sId = searchParams.get('scale')
+                
+                const initialModel = mId ? modelsData.find(m => m.id === mId) : modelsData[0]
+                const initialScale = sId ? scalesData.find(s => s.id === sId) : scalesData[0]
+                
+                if (initialModel) setSelectedModel(initialModel)
+                if (initialScale) setSelectedScale(initialScale)
             } catch (error) {
                 console.error("Initialization Error:", error)
             } finally {
@@ -83,7 +91,7 @@ export default function RatingExecutionPage() {
             }
         }
         load()
-    }, [id])
+    }, [id, searchParams])
 
     // Precision Fix: Synchronized derived ratio display
     const liveDerivedMetrics = useMemo(() => {
@@ -94,7 +102,6 @@ export default function RatingExecutionPage() {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
             
-            // Map the value by ID, slug, and normalized names for robust formula evaluation
             context[p.id] = val;
             if (p.slug) {
                 const normalizedSlug = p.slug.toLowerCase().replace(/[-\s]/g, '_');
@@ -111,7 +118,6 @@ export default function RatingExecutionPage() {
             const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
             const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             
-            // Core sovereign ratios with precise key matching
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
@@ -142,9 +148,6 @@ export default function RatingExecutionPage() {
             numericInputs[p.id] = val;
         });
 
-        // Debug trace as requested
-        console.log("VALUES PASSED:", numericInputs);
-
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
         setCalculation(result)
         setStep("calculate")
@@ -156,7 +159,6 @@ export default function RatingExecutionPage() {
         if (!country) return;
         setIsGenerating(true)
         
-        // Demo mode: Realistic India Sovereign Benchmarks
         const demoData: Record<string, number> = {
             gdp: 3400000000000, 
             gdp_growth: 6.5,
@@ -185,7 +187,6 @@ export default function RatingExecutionPage() {
             const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
             const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             
-            // Check demoData using multiple identifiers
             const val = demoData[slug] ?? demoData[name] ?? demoData[p.id];
             
             if (val !== undefined) {
@@ -226,7 +227,7 @@ export default function RatingExecutionPage() {
                     <p className="text-primary font-bold uppercase text-xs tracking-widest mt-1">{step} Phase</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => router.back()} className="font-semibold">Cancel</Button>
+                    <Button variant="outline" onClick={() => router.push(`/countries`)} className="font-semibold">Cancel</Button>
                     {step === "input" && <Button onClick={handleRun} className="bg-primary font-bold shadow-md hover:shadow-lg transition-all"><Calculator className="w-4 h-4 mr-2" /> Run Analysis</Button>}
                     {step === "calculate" && <Button onClick={() => setStep("review")} className="bg-primary font-bold">Continue to Review <ChevronRight className="w-4 h-4 ml-2" /></Button>}
                     {step === "review" && <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white font-bold"><CheckCircle className="w-4 h-4 mr-2" /> Finalize Rating</Button>}
@@ -236,22 +237,19 @@ export default function RatingExecutionPage() {
             <div className="grid gap-8 lg:grid-cols-12">
                 <div className="lg:col-span-3">
                     <Card className="border-2 shadow-sm">
-                        <CardHeader className="bg-slate-50 border-b pb-4"><CardTitle className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Analytical Framework</CardTitle></CardHeader>
+                        <CardHeader className="bg-slate-50 border-b pb-4"><CardTitle className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Active Framework</CardTitle></CardHeader>
                         <CardContent className="space-y-6 pt-6">
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-900 uppercase">Model</label>
-                                <Select onValueChange={(v) => setSelectedModel(models.find(m => m.id === v)!)} value={selectedModel?.id}>
-                                    <SelectTrigger className="font-medium h-11"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{models.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}</SelectContent>
-                                </Select>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-muted-foreground uppercase">Model</label>
+                                <p className="font-black text-slate-900">{selectedModel?.name}</p>
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-slate-900 uppercase">Scale</label>
-                                <Select onValueChange={(v) => setSelectedScale(scales.find(s => s.id === v)!)} value={selectedScale?.id}>
-                                    <SelectTrigger className="font-medium h-11"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{scales.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                                </Select>
+                            <div className="space-y-1 pt-4 border-t">
+                                <label className="text-xs font-bold text-muted-foreground uppercase">Scale</label>
+                                <p className="font-black text-slate-900">{selectedScale?.name}</p>
                             </div>
+                            <Button variant="ghost" size="sm" onClick={() => router.push(`/rate/${id}/init`)} className="w-full text-xs font-bold mt-4 border border-dashed text-primary hover:bg-primary/5">
+                                <Settings2 className="w-3 h-3 mr-2" /> Change Config
+                            </Button>
                         </CardContent>
                     </Card>
                 </div>

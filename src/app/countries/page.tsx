@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from "react"
@@ -46,7 +47,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useToast } from "@/hooks/use-toast"
 
 const DEMO_COUNTRIES: Partial<Country>[] = [
-  { id: 'demo-in', name: "India", region: "South Asia", incomeGroup: "Emerging", currency: "INR" },
+  { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR" },
   { id: 'demo-us', name: "USA", region: "North America", incomeGroup: "Advanced", currency: "USD" },
   { id: 'demo-cn', name: "China", region: "East Asia", incomeGroup: "Emerging", currency: "CNY" },
   { id: 'demo-de', name: "Germany", region: "Western Europe", incomeGroup: "Advanced", currency: "EUR" },
@@ -170,7 +171,7 @@ export default function CountriesPage() {
                     </div>
                     <div className="grid gap-2">
                         <label className="text-xs font-bold uppercase text-muted-foreground">Region</label>
-                        <Input value={newCountry.region} onChange={e => setNewCountry({...newCountry, region: e.target.value})} placeholder="e.g. South Asia" />
+                        <Input value={newCountry.region} onChange={e => setNewCountry({...newCountry, region: e.target.value})} placeholder="e.g. Asia" />
                     </div>
                 </div>
 

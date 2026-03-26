@@ -1,5 +1,5 @@
 
-import { collection, doc, setDoc, getDoc, getDocs, query, where, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, query, where, addDoc, serverTimestamp, orderBy, updateDoc, deleteDoc, Timestamp, writeBatch } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { Parameter, RatingModel, RatingScale } from './rating-engine';
 
@@ -29,13 +29,41 @@ export const deleteParameter = (id: string) => deleteDoc(doc(db, 'parameters', i
 
 // MODELS
 export const getModels = () => getAll<RatingModel>('models');
+
+export const getActiveModels = async () => {
+  const q = query(collection(db, 'models'), where('isActive', '==', true));
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as RatingModel));
+};
+
 export const saveModel = async (m: any) => {
     const id = m.id || doc(collection(db, 'models')).id;
-    const data = { ...m };
-    delete data.id; // Ensure ID is not stored inside the document data
+    const data = { 
+      ...m,
+      version: m.version ?? 1,
+      status: m.status ?? 'draft',
+      isActive: m.isActive ?? false
+    };
+    delete data.id;
     await setDoc(doc(db, 'models', id), data, { merge: true });
     return id;
 };
+
+export const setActiveModel = async (modelId: string, name: string) => {
+  const batch = writeBatch(db);
+  
+  // Deactivate all models with the same name (lineage)
+  const q = query(collection(db, 'models'), where('name', '==', name));
+  const snap = await getDocs(q);
+  snap.docs.forEach(d => {
+    batch.update(d.ref, { isActive: false });
+  });
+
+  // Activate selected model
+  batch.update(doc(db, 'models', modelId), { isActive: true });
+  await batch.commit();
+};
+
 export const deleteModel = (id: string) => deleteDoc(doc(db, 'models', id));
 
 // SCALES
@@ -94,16 +122,10 @@ export interface Rating {
 
 export const saveRating = (r: any) => addDoc(collection(db, 'ratings'), { ...r, createdAt: serverTimestamp() });
 
-/**
- * Fetches rating history for a specific country.
- * Fixed: Removed server-side orderBy to avoid the need for composite indexes in the prototype.
- * Sorting is now performed client-side.
- */
 export const getRatingHistory = (countryId: string) => {
   const q = query(collection(db, 'ratings'), where('countryId', '==', countryId));
   return getDocs(q).then(s => {
     const results = s.docs.map(d => ({ id: d.id, ...d.data() } as Rating));
-    // Client-side sort to avoid composite index requirement
     return results.sort((a, b) => {
       const dateA = a.createdAt?.toDate?.() || new Date(0);
       const dateB = b.createdAt?.toDate?.() || new Date(0);

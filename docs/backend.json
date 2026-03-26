@@ -43,11 +43,14 @@
     "RatingModel": {
       "title": "Rating Model",
       "type": "object",
-      "description": "A weighted collection of parameters.",
+      "description": "A weighted collection of parameters with version control.",
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "version": { "type": "string" },
+        "version": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "parentModelId": { "type": "string" },
         "weights": { 
           "type": "object",
           "description": "Map of parameterId to weight percentage"
@@ -57,7 +60,7 @@
           "description": "Thresholds for scoring parameters 1-5"
         }
       },
-      "required": ["name", "weights"]
+      "required": ["name", "weights", "version", "status", "isActive"]
     },
     "RatingScale": {
       "title": "Rating Scale",

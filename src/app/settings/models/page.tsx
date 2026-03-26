@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { getModels, saveModel, getParameters, deleteModel } from "@/lib/store"
+import { getModels, saveModel, getParameters, deleteModel, setActiveModel } from "@/lib/store"
 import { RatingModel, Parameter, ModelTransformation } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,11 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Save, Layers, Settings2, AlertCircle, CheckCircle2, Search, Filter, Zap, ChevronRight, Info, Trash2, Sparkles, BrainCircuit } from "lucide-react"
+import { 
+  Plus, Save, Layers, Settings2, AlertCircle, CheckCircle2, 
+  Search, Filter, Zap, ChevronRight, Info, Trash2, 
+  Sparkles, BrainCircuit, Lock, Copy, History, Check 
+} from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
@@ -36,10 +40,10 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
 
 const CATEGORIES = ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] as const;
 
-// Professional Sovereign Benchmarks (Thresholds and Inverse Flags) - Updated per Emerging Market Framework requirements
 const PROFESSIONAL_THRESHOLDS: Record<string, ModelTransformation> = {
   "gdp": { thresholds: [500000000000, 1000000000000, 2000000000000, 5000000000000], inverse: false },
   "gdp_growth": { thresholds: [2, 4, 6, 8], inverse: false },
@@ -61,21 +65,9 @@ const PROFESSIONAL_THRESHOLDS: Record<string, ModelTransformation> = {
 };
 
 const TEMPLATES: Record<string, Partial<RatingModel>> = {
-  "Advanced Economy": {
-    weights: {},
-    version: "1.0",
-    name: "Standard Advanced Model"
-  },
-  "Emerging Market": {
-    weights: {},
-    version: "1.0",
-    name: "Emerging Market Framework"
-  },
-  "Frontier Market": {
-    weights: {},
-    version: "1.0",
-    name: "Frontier Risk Model"
-  }
+  "Advanced Economy": { weights: {}, version: 1, name: "Standard Advanced Model", status: 'draft', isActive: false },
+  "Emerging Market": { weights: {}, version: 1, name: "Emerging Market Framework", status: 'draft', isActive: false },
+  "Frontier Market": { weights: {}, version: 1, name: "Frontier Risk Model", status: 'draft', isActive: false }
 };
 
 export default function ModelBuilderPage() {
@@ -92,6 +84,8 @@ export default function ModelBuilderPage() {
     setParams(await getParameters())
   }
   useEffect(() => { load() }, [])
+
+  const isPublished = selectedModel?.status === 'published';
 
   const totalWeight = useMemo(() => {
     if (!selectedModel?.weights) return 0;
@@ -110,7 +104,7 @@ export default function ModelBuilderPage() {
     return weights;
   }, [selectedModel?.weights, params]);
 
-  const handleSave = async () => {
+  const handleSave = async (status: 'draft' | 'published' = 'draft') => {
     if (!selectedModel?.name) return
     if (totalWeight !== 100) {
       toast({ 
@@ -121,61 +115,76 @@ export default function ModelBuilderPage() {
       return;
     }
 
-    const backup = { ...selectedModel };
-
-    const cleanObject = (obj: any): any => {
-        if (!obj || typeof obj !== 'object') return obj;
-        if (Array.isArray(obj)) {
-            return obj.map(item => cleanObject(item));
-        }
-        const cleaned: any = {};
-        Object.keys(obj).forEach(key => {
-            const val = obj[key];
-            if (val === undefined) return;
-            if (val !== null && typeof val === 'object') {
-                cleaned[key] = cleanObject(val);
-            } else {
-                cleaned[key] = val;
-            }
-        });
-        return cleaned;
-    };
-
     try {
-        const cleanedData = cleanObject(selectedModel);
-        const savedId = await saveModel(cleanedData);
-        if (!selectedModel.id) {
-            setSelectedModel(prev => prev ? { ...prev, id: savedId } : null);
-        }
+        const dataToSave = { 
+          ...selectedModel, 
+          status,
+          version: selectedModel.version ?? 1,
+          isActive: selectedModel.isActive ?? false
+        };
+        const savedId = await saveModel(dataToSave);
+        setSelectedModel(prev => prev ? { ...prev, id: savedId, status } : null);
         await load();
-        toast({ title: "Analytical Framework Finalized" });
+        toast({ title: status === 'published' ? "Framework Published & Locked" : "Draft Saved" });
     } catch (error) {
-        console.error("Firestore Save Error:", error);
-        setSelectedModel(backup);
-        toast({ 
-            title: "Save Failed", 
-            description: "Model not saved, your data is safe. Please try again.", 
-            variant: "destructive" 
-        });
+        toast({ title: "Save Failed", variant: "destructive" });
     }
+  }
+
+  const handleClone = async () => {
+    if (!selectedModel) return;
+    const clonedModel = {
+      ...selectedModel,
+      id: undefined,
+      name: `${selectedModel.name} (Copy)`,
+      version: 1,
+      status: 'draft',
+      isActive: false,
+      parentModelId: undefined
+    };
+    setSelectedModel(clonedModel as any);
+    toast({ title: "Model Cloned", description: "You are now editing a new draft." });
+  }
+
+  const handleNewVersion = async () => {
+    if (!selectedModel) return;
+    const nextVersion = {
+      ...selectedModel,
+      id: undefined,
+      version: (selectedModel.version ?? 1) + 1,
+      status: 'draft',
+      isActive: false,
+      parentModelId: selectedModel.id
+    };
+    setSelectedModel(nextVersion as any);
+    toast({ title: "New Version Created", description: "Old version remains locked. This version is a draft." });
+  }
+
+  const handleActivate = async (checked: boolean) => {
+    if (!selectedModel?.id || !selectedModel.name) return;
+    if (selectedModel.status !== 'published') {
+      toast({ title: "Publication Required", description: "Only published models can be activated.", variant: "destructive" });
+      return;
+    }
+    await setActiveModel(selectedModel.id, selectedModel.name);
+    await load();
+    setSelectedModel(prev => prev ? { ...prev, isActive: checked } : null);
+    toast({ title: checked ? "Model Activated" : "Model Deactivated" });
   }
 
   const handleDelete = async (id: string) => {
     try {
       await deleteModel(id);
-      if (selectedModel?.id === id) {
-        setSelectedModel(null);
-      }
+      if (selectedModel?.id === id) setSelectedModel(null);
       await load();
       toast({ title: "Model deleted successfully" });
     } catch (error) {
-      console.error("Delete Model Error:", error);
       toast({ title: "Failed to delete model", variant: "destructive" });
     }
   }
 
   const toggleParam = (pid: string) => {
-    if (!selectedModel) return
+    if (!selectedModel || isPublished) return
     const weights = { ...(selectedModel.weights || {}) }
     const trans = { ...(selectedModel.transformations || {}) }
     if (weights[pid] !== undefined) {
@@ -183,21 +192,16 @@ export default function ModelBuilderPage() {
       delete trans[pid]
     } else {
       weights[pid] = 0
-      
       const param = params.find(p => p.id === pid);
       const slug = (param?.slug || "").toLowerCase();
-      const nameKey = (param?.name || "").toLowerCase().replace(/[\s-]/g, "_");
-      
-      // Apply professional thresholds if available, otherwise fallback to standard default
-      const defaultTrans = PROFESSIONAL_THRESHOLDS[slug] || PROFESSIONAL_THRESHOLDS[nameKey] || { thresholds: [20, 40, 60, 80], inverse: false };
-      
+      const defaultTrans = PROFESSIONAL_THRESHOLDS[slug] || { thresholds: [20, 40, 60, 80], inverse: false };
       trans[pid] = { ...defaultTrans };
     }
     setSelectedModel({ ...selectedModel, weights, transformations: trans })
   }
 
   const handleWeightChange = (pid: string, val: number) => {
-    if (!selectedModel) return;
+    if (!selectedModel || isPublished) return;
     setSelectedModel({
       ...selectedModel,
       weights: { ...selectedModel.weights, [pid]: val }
@@ -207,33 +211,17 @@ export default function ModelBuilderPage() {
   const applyTemplate = (name: string) => {
       const template = TEMPLATES[name];
       if (template) {
-          setSelectedModel({
-              ...selectedModel,
-              ...template,
-              id: selectedModel?.id
-          });
+          setSelectedModel({ ...selectedModel, ...template, id: selectedModel?.id });
           toast({ title: `Applied ${name} Template` });
       }
   }
 
   const aiRecommendation = useMemo(() => {
     const { classification, scenario } = advisorContext;
-    let model = "No exact model found. Suggested to create a new model.";
-    let paramsList = ["GDP Growth", "Inflation", "Debt to GDP", "FX Reserves", "Governance Score"];
-    let reason = `${classification} economy with ${scenario} scenario context.`;
-
+    let model = "Emerging Market Framework";
     if (classification === "Advanced") model = "Standard Advanced Model";
-    else if (classification === "Emerging") model = "Emerging Market Framework";
     else if (classification === "Frontier") model = "Frontier Risk Model";
-
-    const focusParams = [];
-    if (scenario === "Stress") {
-      focusParams.push("Debt to GDP (Higher weight)", "Inflation (Sensitivity)", "External Risk (Liquidity focus)");
-    } else {
-      focusParams.push("Balanced Weight Distribution");
-    }
-
-    return { model, reason, paramsList, focusParams };
+    return { model, reason: `${classification} economy with ${scenario} context.`, paramsList: ["GDP Growth", "Inflation", "Debt to GDP"], focusParams: ["Balanced Weight Distribution"] };
   }, [advisorContext]);
 
   return (
@@ -244,97 +232,18 @@ export default function ModelBuilderPage() {
           <p className="text-muted-foreground mt-1 text-lg">Configure weighted analytical frameworks and scoring transformations.</p>
         </div>
         <div className="flex gap-2">
-            <Dialog open={isAdvisorOpen} onOpenChange={setIsAdvisorOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="border-primary/50 text-primary hover:bg-primary/5">
-                  <Sparkles className="w-4 h-4 mr-2" /> AI Model Advisor
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <BrainCircuit className="w-5 h-5 text-primary" />
-                    Sovereign Model Advisor
-                  </DialogTitle>
-                  <DialogDescription>
-                    Get intelligent framework suggestions based on specific geopolitical and economic contexts.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-6 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase text-muted-foreground">Market Classification</label>
-                      <Select value={advisorContext.classification} onValueChange={v => setAdvisorContext({...advisorContext, classification: v})}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Advanced">Advanced</SelectItem>
-                          <SelectItem value="Emerging">Emerging</SelectItem>
-                          <SelectItem value="Frontier">Frontier</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase text-muted-foreground">Scenario Cycle</label>
-                      <Select value={advisorContext.scenario} onValueChange={v => setAdvisorContext({...advisorContext, scenario: v})}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Baseline">Baseline</SelectItem>
-                          <SelectItem value="Stress">Stress Scenario</SelectItem>
-                          <SelectItem value="Optimistic">Optimistic</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <Card className="bg-primary/5 border-primary/20">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center gap-2 text-primary">
-                        <Sparkles className="w-3 h-3" />
-                        <span className="text-[10px] font-black uppercase tracking-widest">AI Recommendation</span>
-                      </div>
-                      <CardTitle className="text-lg font-bold">{aiRecommendation.model}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {aiRecommendation.reason} Based on this profile, we recommend the following framework parameters:
-                      </p>
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Core Parameters</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {aiRecommendation.paramsList.map(p => (
-                            <Badge key={p} variant="outline" className="text-[10px] font-medium bg-white">{p}</Badge>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-[10px] font-bold uppercase text-muted-foreground">Analytical Focus</p>
-                        <ul className="text-xs space-y-1">
-                          {aiRecommendation.focusParams.map(f => (
-                            <li key={f} className="flex items-center gap-2 text-slate-700">
-                              <ChevronRight className="w-3 h-3 text-primary" /> {f}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsAdvisorOpen(false)} className="w-full">Dismiss Advisor</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-
-            <Select onValueChange={applyTemplate}>
-                <SelectTrigger className="w-[200px] bg-muted/50">
-                    <Zap className="w-4 h-4 mr-2 text-yellow-500" />
-                    <SelectValue placeholder="Load Template" />
-                </SelectTrigger>
-                <SelectContent>
-                    {Object.keys(TEMPLATES).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-            </Select>
-            <Button onClick={() => setSelectedModel({ name: "New Analytical Model", version: "1.0", weights: {}, transformations: {} })}>
+            {!isPublished && (
+              <Select onValueChange={applyTemplate}>
+                  <SelectTrigger className="w-[180px] bg-muted/50">
+                      <Zap className="w-4 h-4 mr-2 text-yellow-500" />
+                      <SelectValue placeholder="Load Template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                      {Object.keys(TEMPLATES).map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+              </Select>
+            )}
+            <Button onClick={() => setSelectedModel({ name: "New Model", version: 1, weights: {}, transformations: {}, status: 'draft', isActive: false })}>
                 <Plus className="w-4 h-4 mr-2" /> New Framework
             </Button>
         </div>
@@ -347,7 +256,7 @@ export default function ModelBuilderPage() {
                 <CardTitle className="text-xs font-bold uppercase text-muted-foreground">Framework Library</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-                {models.map(m => (
+                {models.sort((a,b) => b.version - a.version).map(m => (
                     <div 
                         key={m.id} 
                         className={cn(
@@ -359,40 +268,15 @@ export default function ModelBuilderPage() {
                         <div className="flex justify-between items-start">
                             <div className="flex-1 min-w-0">
                                 <p className="font-bold text-sm truncate">{m.name}</p>
-                                <p className="text-[10px] text-muted-foreground uppercase font-mono">v{m.version}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <Badge variant="outline" className="text-[9px] h-4 font-mono">v{m.version}</Badge>
+                                  <Badge variant={m.status === 'published' ? 'default' : 'secondary'} className="text-[9px] h-4">
+                                    {m.status}
+                                  </Badge>
+                                  {m.isActive && <Badge className="text-[9px] h-4 bg-green-500 hover:bg-green-600">Active</Badge>}
+                                </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Delete Framework?</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                                Are you sure you want to delete "{m.name}"? This action is permanent and cannot be undone.
-                                            </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction 
-                                                onClick={() => handleDelete(m.id)}
-                                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                            >
-                                                Delete
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                                <Layers className={cn("w-4 h-4 opacity-20 group-hover:opacity-100 transition-opacity", selectedModel?.id === m.id && "text-primary opacity-100")} />
-                            </div>
+                            <Layers className={cn("w-4 h-4 opacity-20 group-hover:opacity-100", selectedModel?.id === m.id && "text-primary opacity-100")} />
                         </div>
                     </div>
                 ))}
@@ -403,11 +287,18 @@ export default function ModelBuilderPage() {
         <div className="lg:col-span-3">
           {selectedModel ? (
             <Card className="border-2 relative overflow-hidden">
-              <CardHeader className="border-b bg-card sticky top-0 z-20 shadow-sm transition-shadow">
+              <CardHeader className="border-b bg-card sticky top-0 z-20 shadow-sm">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                   <div className="space-y-1">
-                    <CardTitle className="text-xl">Analytical Architecture</CardTitle>
-                    <CardDescription>Assign pillar weights and define transformation thresholds.</CardDescription>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-xl">Analytical Architecture</CardTitle>
+                      {isPublished && <Lock className="w-4 h-4 text-muted-foreground" />}
+                    </div>
+                    <CardDescription>
+                      {isPublished 
+                        ? "This version is locked. Create a new version to make changes." 
+                        : "Assign pillar weights and define transformation thresholds."}
+                    </CardDescription>
                   </div>
                   <div className="flex items-center gap-3 w-full lg:w-auto">
                     <div className={cn(
@@ -415,57 +306,59 @@ export default function ModelBuilderPage() {
                         totalWeight === 100 ? "bg-green-50 border-green-500 text-green-700" : "bg-red-50 border-red-500 text-red-700"
                     )}>
                         {totalWeight === 100 ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
-                        Total Weight: {totalWeight}%
+                        {totalWeight}%
                     </div>
-                    <Button onClick={handleSave} className="bg-primary shadow-lg hover:shadow-xl transition-all flex-1 lg:flex-none">
-                        <Save className="w-4 h-4 mr-2" /> Save Framework
-                    </Button>
+                    
+                    {isPublished ? (
+                      <div className="flex gap-2">
+                        <div className="flex items-center gap-2 mr-4">
+                          <span className="text-xs font-bold uppercase text-muted-foreground">Active</span>
+                          <Switch checked={selectedModel.isActive} onCheckedChange={handleActivate} />
+                        </div>
+                        <Button variant="outline" onClick={handleNewVersion}><History className="w-4 h-4 mr-2" /> New Version</Button>
+                        <Button variant="outline" onClick={handleClone}><Copy className="w-4 h-4 mr-2" /> Clone</Button>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button variant="outline" onClick={() => handleSave('draft')}><Save className="w-4 h-4 mr-2" /> Save Draft</Button>
+                        <Button onClick={() => handleSave('published')} className="bg-primary"><Check className="w-4 h-4 mr-2" /> Publish Version</Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-6">
                 <div className="grid gap-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase text-muted-foreground">Framework Designation</label>
-                      <Input value={selectedModel.name} onChange={e => setSelectedModel({...selectedModel, name: e.target.value})} className="font-bold" />
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Framework Name</label>
+                      <Input value={selectedModel.name} disabled={isPublished} onChange={e => setSelectedModel({...selectedModel, name: e.target.value})} className="font-bold" />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase text-muted-foreground">Version Control</label>
-                      <Input value={selectedModel.version} onChange={e => setSelectedModel({...selectedModel, version: e.target.value})} />
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Version</label>
+                      <Input value={selectedModel.version} disabled className="font-mono bg-muted" />
                     </div>
-                  </div>
-
-                  <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input 
-                        placeholder="Filter parameters within builder..." 
-                        className="pl-10"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                      />
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Status</label>
+                      <Badge className="h-10 w-full justify-center text-sm font-bold uppercase" variant={isPublished ? 'default' : 'secondary'}>
+                        {selectedModel.status}
+                      </Badge>
+                    </div>
                   </div>
 
                   <Accordion type="multiple" defaultValue={["Economic"]} className="space-y-4">
                     {CATEGORIES.map(cat => {
-                        const catParams = params.filter(p => p.category === cat && p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                        const catParams = params.filter(p => p.category === cat);
                         const weight = categoryWeights[cat];
-                        
                         return (
                             <AccordionItem key={cat} value={cat} className="border rounded-lg overflow-hidden bg-card">
-                                <AccordionTrigger className="px-4 py-4 hover:bg-muted/30 hover:no-underline">
+                                <AccordionTrigger className="px-4 py-4 hover:no-underline">
                                     <div className="flex items-center justify-between w-full pr-4">
-                                        <div className="flex items-center gap-3 text-left">
-                                            <Badge variant="outline" className="bg-muted text-primary font-mono">{catParams.length}</Badge>
+                                        <div className="flex items-center gap-3">
+                                            <Badge variant="outline" className="font-mono">{catParams.length}</Badge>
                                             <span className="font-bold text-lg">{cat}</span>
                                         </div>
-                                        <div className={cn(
-                                            "flex items-center gap-2 px-3 py-1 rounded-md border text-sm font-bold",
-                                            weight > 0 ? "border-primary text-primary" : "border-muted text-muted-foreground"
-                                        )}>
-                                            <Layers className="w-3.5 h-3.5" />
-                                            {weight}%
-                                        </div>
+                                        <div className="font-bold text-primary">{weight}%</div>
                                     </div>
                                 </AccordionTrigger>
                                 <AccordionContent className="p-0 border-t">
@@ -475,69 +368,36 @@ export default function ModelBuilderPage() {
                                             return (
                                                 <div key={p.id} className={cn("p-4 transition-colors", isActive ? "bg-primary/5" : "hover:bg-muted/10")}>
                                                     <div className="flex items-center gap-4">
-                                                        <Checkbox checked={isActive} onCheckedChange={() => toggleParam(p.id)} />
+                                                        <Checkbox checked={isActive} disabled={isPublished} onCheckedChange={() => toggleParam(p.id)} />
                                                         <div className="flex-1 min-w-0">
-                                                            <div className="flex items-center gap-2 flex-wrap">
-                                                                <span className="font-bold text-sm truncate">{p.name}</span>
-                                                                <Badge variant="outline" className="text-[9px] h-4 border-none bg-muted font-mono">{p.slug}</Badge>
-                                                                <Badge variant="outline" className={cn(
-                                                                    "text-[9px] h-4",
-                                                                    p.type === 'raw' ? "text-blue-600 border-blue-100" : "text-purple-600 border-purple-100"
-                                                                )}>{p.type}</Badge>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-bold text-sm">{p.name}</span>
+                                                                <Badge variant="outline" className="text-[9px] h-4">{p.type}</Badge>
                                                             </div>
-                                                            <p className="text-[10px] text-muted-foreground mt-0.5">{p.dataSource}</p>
                                                         </div>
                                                         {isActive && (
                                                             <div className="flex items-center gap-2">
-                                                                <label className="text-[10px] font-bold uppercase text-muted-foreground">Weight</label>
-                                                                <div className="relative">
-                                                                    <Input 
-                                                                        type="number" 
-                                                                        className="w-20 h-9 font-bold text-right pr-6" 
-                                                                        value={selectedModel.weights?.[p.id]} 
-                                                                        onChange={e => handleWeightChange(p.id, Number(e.target.value))} 
-                                                                    />
-                                                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold opacity-40">%</span>
-                                                                </div>
+                                                                <Input 
+                                                                    type="number" 
+                                                                    disabled={isPublished}
+                                                                    className="w-20 h-9 font-bold text-right" 
+                                                                    value={selectedModel.weights?.[p.id]} 
+                                                                    onChange={e => handleWeightChange(p.id, Number(e.target.value))} 
+                                                                />
+                                                                <span className="text-xs font-bold opacity-40">%</span>
                                                             </div>
                                                         )}
                                                     </div>
                                                     
                                                     {isActive && (
                                                         <div className="mt-4 pl-8 pt-4 border-t border-primary/10">
-                                                            <div className="flex items-center justify-between mb-3">
-                                                                <h4 className="text-[11px] font-bold uppercase text-primary/70 flex items-center gap-1.5">
-                                                                    <Settings2 className="w-3 h-3" />
-                                                                    Scoring Transformations (1-5 Scale)
-                                                                </h4>
-                                                                <div className="flex items-center justify-between gap-2">
-                                                                    <span className="text-[10px] font-medium text-muted-foreground">Inverse Logic?</span>
-                                                                    <Checkbox 
-                                                                        checked={selectedModel.transformations?.[p.id]?.inverse} 
-                                                                        onCheckedChange={v => setSelectedModel({
-                                                                            ...selectedModel,
-                                                                            transformations: {
-                                                                                ...selectedModel.transformations,
-                                                                                [p.id]: { ...selectedModel.transformations![p.id], inverse: !!v }
-                                                                            }
-                                                                        })}
-                                                                    />
-                                                                </div>
-                                                            </div>
                                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                                                 {selectedModel.transformations?.[p.id]?.thresholds.map((t, i) => (
                                                                     <div key={i} className="space-y-1">
-                                                                        <label className="text-[9px] text-muted-foreground uppercase flex justify-between">
-                                                                            <span>Score {i+2} Threshold</span>
-                                                                            <TooltipProvider>
-                                                                                <Tooltip>
-                                                                                    <TooltipTrigger><Info className="w-2.5 h-2.5 opacity-50" /></TooltipTrigger>
-                                                                                    <TooltipContent className="text-[10px]">Value required to achieve a score of {i+2}</TooltipContent>
-                                                                                </Tooltip>
-                                                                            </TooltipProvider>
-                                                                        </label>
+                                                                        <label className="text-[9px] text-muted-foreground uppercase">T{i+2}</label>
                                                                         <Input 
                                                                             type="number" 
+                                                                            disabled={isPublished}
                                                                             className="h-8 text-xs font-mono" 
                                                                             value={t} 
                                                                             onChange={e => {
@@ -560,11 +420,6 @@ export default function ModelBuilderPage() {
                                                 </div>
                                             )
                                         })}
-                                        {catParams.length === 0 && (
-                                            <div className="p-8 text-center text-muted-foreground text-xs italic">
-                                                No parameters matching "{searchTerm}" in this category.
-                                            </div>
-                                        )}
                                     </div>
                                 </AccordionContent>
                             </AccordionItem>
@@ -576,12 +431,9 @@ export default function ModelBuilderPage() {
             </Card>
           ) : (
             <div className="h-[600px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl bg-muted/20">
-              <div className="bg-background p-6 rounded-full shadow-sm mb-4">
-                  <Settings2 className="w-12 h-12 text-primary opacity-20" />
-              </div>
-              <p className="text-muted-foreground font-semibold">Select an analytical framework to begin configuration.</p>
-              <p className="text-xs text-muted-foreground mt-2">Manage weights, scoring ranges, and market-specific templates.</p>
-              <Button variant="outline" className="mt-6" onClick={() => setSelectedModel({ name: "New Analytical Model", version: "1.0", weights: {}, transformations: {} })}>
+              <Settings2 className="w-12 h-12 text-primary opacity-20 mb-4" />
+              <p className="text-muted-foreground font-semibold">Select or create an analytical framework.</p>
+              <Button variant="outline" className="mt-6" onClick={() => setSelectedModel({ name: "New Model", version: 1, weights: {}, transformations: {}, status: 'draft', isActive: false })}>
                   <Plus className="w-4 h-4 mr-2" /> Create New Model
               </Button>
             </div>

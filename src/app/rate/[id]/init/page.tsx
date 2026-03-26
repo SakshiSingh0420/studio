@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { getCountries, getModels, getScales, Country } from "@/lib/store"
+import { getCountries, getModels, getScales, Country, getActiveModels } from "@/lib/store"
 import { RatingModel, RatingScale } from "@/lib/rating-engine"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,19 +25,19 @@ export default function RatingInitiationPage() {
     useEffect(() => {
         async function load() {
             try {
-                const [countriesData, modelsData, scalesData] = await Promise.all([
+                const [countriesData, activeModels, scalesData] = await Promise.all([
                     getCountries(),
-                    getModels(),
+                    getActiveModels(),
                     getScales()
                 ])
                 
                 const found = countriesData.find(c => c.id === id)
                 if (found) setCountry(found)
                 
-                setModels(modelsData)
+                setModels(activeModels)
                 setScales(scalesData)
                 
-                if (modelsData.length > 0) setSelectedModelId(modelsData[0].id)
+                if (activeModels.length > 0) setSelectedModelId(activeModels[0].id)
                 if (scalesData.length > 0) setSelectedScaleId(scalesData[0].id)
             } catch (error) {
                 console.error("Initialization Error:", error)
@@ -102,9 +102,13 @@ export default function RatingInitiationPage() {
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-900 uppercase">Analytical Model</label>
                             <Select onValueChange={setSelectedModelId} value={selectedModelId}>
-                                <SelectTrigger className="font-medium h-12"><SelectValue /></SelectTrigger>
+                                <SelectTrigger className="font-medium h-12"><SelectValue placeholder="Select an active model" /></SelectTrigger>
                                 <SelectContent>
-                                    {models.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                                    {models.length > 0 ? (
+                                      models.map(m => <SelectItem key={m.id} value={m.id}>{m.name} (v{m.version})</SelectItem>)
+                                    ) : (
+                                      <div className="p-2 text-xs text-muted-foreground">No active models found. Please activate a model in settings.</div>
+                                    )}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -122,7 +126,7 @@ export default function RatingInitiationPage() {
             </div>
 
             <div className="flex justify-end pt-8">
-                <Button size="lg" onClick={handleInitialize} className="bg-primary font-bold h-14 px-10 rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:translate-y-[-2px] transition-all">
+                <Button size="lg" onClick={handleInitialize} disabled={!selectedModelId} className="bg-primary font-bold h-14 px-10 rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:translate-y-[-2px] transition-all">
                     Initialize Rating Execution <ArrowRight className="ml-2 w-5 h-5" />
                 </Button>
             </div>

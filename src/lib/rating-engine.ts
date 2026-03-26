@@ -21,7 +21,10 @@ export type ModelTransformation = {
 export type RatingModel = {
   id: string;
   name: string;
-  version: string;
+  version: number;
+  isActive: boolean;
+  status: "draft" | "published";
+  parentModelId?: string;
   weights: Record<string, number>; // paramId -> weight
   transformations: Record<string, ModelTransformation>; // paramId -> config
 };
@@ -75,7 +78,6 @@ export function evaluateFormula(formula: string, context: Record<string, number>
 
 /**
  * Executes the full sovereign rating calculation pipeline.
- * Precision Fix: Ensures derived ratios are calculated and injected before scoring.
  */
 export function runDynamicRating(
   valuesById: Record<string, number>,
@@ -93,10 +95,7 @@ export function runDynamicRating(
 
   // 2. Initial Context Population (Raw Values)
   parameters.forEach(p => {
-    // Crucial: Use parameter ID to fetch from valuesById
     const val = Number(valuesById[p.id] ?? 0);
-    
-    // Populate context using all possible keys for maximum reliability
     context[p.id] = val;
     context[normalize(p.id)] = val;
     if (p.slug) {
@@ -115,19 +114,15 @@ export function runDynamicRating(
     }
   });
 
-  // 3. Helper to fetch values from context
   function getVal(keys: string[]) {
     for (const key of keys) {
-      // Try direct match first
       if (context[key] !== undefined) return context[key];
-      // Try normalized match
       const k = normalize(key);
       if (context[k] !== undefined) return context[k];
     }
     return 0;
   }
 
-  // 4. Calculate Critical Derived Ratios with high precision
   const debtToGDP = (() => {
     const debt = getVal(["government_debt", "debt", "total_debt"]);
     const gdp = getVal(["gdp", "nominal_gdp"]);
@@ -146,7 +141,6 @@ export function runDynamicRating(
     return rev ? (int / rev) * 100 : 0;
   })();
 
-  // 5. Inject Derived Values back into the Context for scoring
   parameters.forEach(p => {
     const slug = (p.slug || "").toLowerCase();
     const name = (p.name || "").toLowerCase();
@@ -164,27 +158,23 @@ export function runDynamicRating(
       context[normalize(p.id)] = interestToRevenue;
       context[normalize(p.slug)] = interestToRevenue;
     } else if (p.type === 'derived' && p.formula) {
-        // Fallback to custom formula evaluation
         const val = evaluateFormula(p.formula, context);
         actualValuesUsed[p.id] = val;
         context[normalize(p.id)] = val;
     }
   });
 
-  // 6. Threshold-Based Scoring (Strict 1-5 Comparison)
   function calculateScore(value: number, thresholds: number[], inverse = false) {
     if (!thresholds || thresholds.length !== 4) return 1;
     const [t2, t3, t4, t5] = thresholds.map(t => Number(t));
 
     if (inverse) {
-      // Lower is better (Penalizing high Debt, Inflation)
       if (value <= t2) return 5;
       if (value <= t3) return 4;
       if (value <= t4) return 3;
       if (value <= t5) return 2;
       return 1;
     } else {
-      // Higher is better (Rewarding Growth, Reserves)
       if (value >= t5) return 5;
       if (value >= t4) return 4;
       if (value >= t3) return 3;
@@ -193,7 +183,6 @@ export function runDynamicRating(
     }
   }
 
-  // 7. Calculate Weights and Impacts
   let totalImpact = 0;
   let totalWeight = 0;
 
@@ -210,19 +199,13 @@ export function runDynamicRating(
 
     const score = calculateScore(val, config.thresholds, config.inverse);
     transformedScores[pid] = score;
-    
-    // Impact = (Score / 5) * Weight
     const impact = (score / 5) * weight;
     weightedScores[pid] = impact;
-    
     totalImpact += impact;
     totalWeight += weight;
   });
 
-  // 8. Normalize Final Aggregate Score (0-100%)
   const finalScore = totalWeight > 0 ? (totalImpact / (totalWeight / 100)) : 0;
-
-  // 9. Map Final Score to Rating Scale
   const sortedMapping = [...(scale.mapping || [])].sort((a, b) => b.minScore - a.minScore);
   const ratingMatch = sortedMapping.find(m => finalScore >= m.minScore);
 

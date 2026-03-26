@@ -39,7 +39,7 @@ import {
 
 const CATEGORIES = ["Economic", "Fiscal", "External", "Monetary", "Institutional", "ESG"] as const;
 
-// Professional Sovereign Benchmarks (Thresholds and Inverse Flags)
+// Professional Sovereign Benchmarks (Thresholds and Inverse Flags) - Updated per Emerging Market Framework requirements
 const PROFESSIONAL_THRESHOLDS: Record<string, ModelTransformation> = {
   "gdp": { thresholds: [500000000000, 1000000000000, 2000000000000, 5000000000000], inverse: false },
   "gdp_growth": { thresholds: [2, 4, 6, 8], inverse: false },

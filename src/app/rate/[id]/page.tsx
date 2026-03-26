@@ -96,16 +96,22 @@ export default function RatingExecutionPage() {
             
             // Map the value by ID, slug, and normalized names for robust formula evaluation
             context[p.id] = val;
-            if (p.slug) context[p.slug.toLowerCase()] = val;
-            if (p.name) context[p.name.toLowerCase().replace(/[\s-]/g, '_')] = val;
+            if (p.slug) {
+                const normalizedSlug = p.slug.toLowerCase().replace(/[-\s]/g, '_');
+                context[normalizedSlug] = val;
+            }
+            if (p.name) {
+                const normalizedName = p.name.toLowerCase().replace(/[\s-]/g, '_');
+                context[normalizedName] = val;
+            }
         });
         
         const results: Record<string, number> = {};
         parameters.filter(p => p.type === 'derived').forEach(p => {
-            const slug = (p.slug || "").toLowerCase();
-            const name = (p.name || "").toLowerCase();
+            const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
+            const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
             
-            // Core sovereign ratios as requested
+            // Core sovereign ratios with precise key matching
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
@@ -132,8 +138,12 @@ export default function RatingExecutionPage() {
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
-            numericInputs[p.id] = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+            const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+            numericInputs[p.id] = val;
         });
+
+        // Debug trace as requested
+        console.log("VALUES PASSED:", numericInputs);
 
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
         setCalculation(result)
@@ -174,7 +184,10 @@ export default function RatingExecutionPage() {
             if (p.type !== 'raw') return;
             const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
             const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
+            
+            // Check demoData using multiple identifiers
             const val = demoData[slug] ?? demoData[name] ?? demoData[p.id];
+            
             if (val !== undefined) {
                 nextFactSheet[p.id] = val;
                 filled.add(p.id);

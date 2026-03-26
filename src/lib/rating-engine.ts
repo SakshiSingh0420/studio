@@ -93,10 +93,22 @@ export function runDynamicRating(
 
   // 2. Initial Context Population (Raw Values)
   parameters.forEach(p => {
+    // Crucial: Use parameter ID to fetch from valuesById
     const val = Number(valuesById[p.id] ?? 0);
+    
+    // Populate context using all possible keys for maximum reliability
+    context[p.id] = val;
     context[normalize(p.id)] = val;
-    context[normalize(p.slug || p.id)] = val;
-    context[normalize(p.name || "")] = val;
+    if (p.slug) {
+        const normSlug = normalize(p.slug);
+        context[normSlug] = val;
+        context[p.slug.toLowerCase()] = val;
+    }
+    if (p.name) {
+        const normName = normalize(p.name);
+        context[normName] = val;
+        context[p.name.toLowerCase()] = val;
+    }
     
     if (p.type === "raw") {
       actualValuesUsed[p.id] = val;
@@ -117,20 +129,20 @@ export function runDynamicRating(
 
   // 4. Calculate Critical Derived Ratios with high precision
   const debtToGDP = (() => {
-    const debt = getVal(["government_debt", "debt", "total_debt", "governmentdebt"]);
-    const gdp = getVal(["gdp", "nominal_gdp", "nominalgdp"]);
+    const debt = getVal(["government_debt", "debt", "total_debt"]);
+    const gdp = getVal(["gdp", "nominal_gdp"]);
     return gdp ? (debt / gdp) * 100 : 0;
   })();
 
   const reserveCover = (() => {
-    const res = getVal(["fx_reserves", "reserves", "fxreserves"]);
+    const res = getVal(["fx_reserves", "reserves"]);
     const imp = getVal(["imports"]);
     return imp ? res / imp : 0;
   })();
 
   const interestToRevenue = (() => {
-    const int = getVal(["interest_payments", "interest", "interestpayments"]);
-    const rev = getVal(["government_revenue", "revenue", "governmentrevenue"]);
+    const int = getVal(["interest_payments", "interest"]);
+    const rev = getVal(["government_revenue", "revenue"]);
     return rev ? (int / rev) * 100 : 0;
   })();
 
@@ -142,12 +154,15 @@ export function runDynamicRating(
     if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
       actualValuesUsed[p.id] = debtToGDP;
       context[normalize(p.id)] = debtToGDP;
+      context[normalize(p.slug)] = debtToGDP;
     } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
       actualValuesUsed[p.id] = reserveCover;
       context[normalize(p.id)] = reserveCover;
+      context[normalize(p.slug)] = reserveCover;
     } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
       actualValuesUsed[p.id] = interestToRevenue;
       context[normalize(p.id)] = interestToRevenue;
+      context[normalize(p.slug)] = interestToRevenue;
     } else if (p.type === 'derived' && p.formula) {
         // Fallback to custom formula evaluation
         const val = evaluateFormula(p.formula, context);
@@ -159,21 +174,21 @@ export function runDynamicRating(
   // 6. Threshold-Based Scoring (Strict 1-5 Comparison)
   function calculateScore(value: number, thresholds: number[], inverse = false) {
     if (!thresholds || thresholds.length !== 4) return 1;
-    const [t1, t2, t3, t4] = thresholds.map(t => Number(t));
+    const [t2, t3, t4, t5] = thresholds.map(t => Number(t));
 
     if (inverse) {
       // Lower is better (Penalizing high Debt, Inflation)
-      if (value <= t1) return 5;
-      if (value <= t2) return 4;
-      if (value <= t3) return 3;
-      if (value <= t4) return 2;
+      if (value <= t2) return 5;
+      if (value <= t3) return 4;
+      if (value <= t4) return 3;
+      if (value <= t5) return 2;
       return 1;
     } else {
       // Higher is better (Rewarding Growth, Reserves)
-      if (value >= t4) return 5;
-      if (value >= t3) return 4;
-      if (value >= t2) return 3;
-      if (value >= t1) return 2;
+      if (value >= t5) return 5;
+      if (value >= t4) return 4;
+      if (value >= t3) return 3;
+      if (value >= t2) return 2;
       return 1;
     }
   }

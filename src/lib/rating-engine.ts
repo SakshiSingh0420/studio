@@ -1,3 +1,4 @@
+
 'use client';
 
 export type Parameter = {
@@ -105,41 +106,46 @@ export function runDynamicRating(
   // 3. Helper to fetch values from context
   function getVal(keys: string[]) {
     for (const key of keys) {
+      // Try direct match first
+      if (context[key] !== undefined) return context[key];
+      // Try normalized match
       const k = normalize(key);
       if (context[k] !== undefined) return context[k];
     }
     return 0;
   }
 
-  // 4. Calculate Critical Derived Ratios
+  // 4. Calculate Critical Derived Ratios with high precision
   const debtToGDP = (() => {
-    const debt = getVal(["government_debt", "debt", "total_debt"]);
-    const gdp = getVal(["gdp", "nominal_gdp"]);
+    const debt = getVal(["government_debt", "debt", "total_debt", "governmentdebt"]);
+    const gdp = getVal(["gdp", "nominal_gdp", "nominalgdp"]);
     return gdp ? (debt / gdp) * 100 : 0;
   })();
 
   const reserveCover = (() => {
-    const res = getVal(["fx_reserves", "reserves"]);
+    const res = getVal(["fx_reserves", "reserves", "fxreserves"]);
     const imp = getVal(["imports"]);
     return imp ? res / imp : 0;
   })();
 
   const interestToRevenue = (() => {
-    const int = getVal(["interest_payments", "interest"]);
-    const rev = getVal(["government_revenue", "revenue"]);
+    const int = getVal(["interest_payments", "interest", "interestpayments"]);
+    const rev = getVal(["government_revenue", "revenue", "governmentrevenue"]);
     return rev ? (int / rev) * 100 : 0;
   })();
 
   // 5. Inject Derived Values back into the Context for scoring
   parameters.forEach(p => {
-    const key = normalize(p.name || p.id);
-    if (key.includes("debt") && key.includes("gdp")) {
+    const slug = (p.slug || "").toLowerCase();
+    const name = (p.name || "").toLowerCase();
+    
+    if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
       actualValuesUsed[p.id] = debtToGDP;
       context[normalize(p.id)] = debtToGDP;
-    } else if (key.includes("reserve") && key.includes("cover")) {
+    } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
       actualValuesUsed[p.id] = reserveCover;
       context[normalize(p.id)] = reserveCover;
-    } else if (key.includes("interest") && key.includes("revenue")) {
+    } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
       actualValuesUsed[p.id] = interestToRevenue;
       context[normalize(p.id)] = interestToRevenue;
     } else if (p.type === 'derived' && p.formula) {
@@ -199,7 +205,6 @@ export function runDynamicRating(
   });
 
   // 8. Normalize Final Aggregate Score (0-100%)
-  // Since Impact = (Score/5)*Weight, the max possible sum is (5/5)*100 = 100
   const finalScore = totalWeight > 0 ? (totalImpact / (totalWeight / 100)) : 0;
 
   // 9. Map Final Score to Rating Scale

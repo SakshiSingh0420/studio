@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -92,9 +93,11 @@ export default function RatingExecutionPage() {
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+            
+            // Map the value by ID, slug, and normalized names for robust formula evaluation
             context[p.id] = val;
-            context[(p.slug || p.id).toLowerCase().replace(/[-\s]/g, '_')] = val;
-            context[(p.name || "").toLowerCase().replace(/[\s-]/g, '_')] = val;
+            if (p.slug) context[p.slug.toLowerCase()] = val;
+            if (p.name) context[p.name.toLowerCase().replace(/[\s-]/g, '_')] = val;
         });
         
         const results: Record<string, number> = {};
@@ -102,6 +105,7 @@ export default function RatingExecutionPage() {
             const slug = (p.slug || "").toLowerCase();
             const name = (p.name || "").toLowerCase();
             
+            // Core sovereign ratios as requested
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
@@ -142,17 +146,18 @@ export default function RatingExecutionPage() {
         if (!country) return;
         setIsGenerating(true)
         
+        // Demo mode: Realistic India Sovereign Benchmarks
         const demoData: Record<string, number> = {
-            gdp: 3400, 
+            gdp: 3400000000000, 
             gdp_growth: 6.5,
             gdp_per_capita: 2400,
             inflation: 5.5,
-            government_debt: 3000,
-            government_revenue: 700,
-            interest_payments: 200,
-            fx_reserves: 600,
-            imports: 700,
-            exports: 670,
+            government_debt: 3000000000000,
+            government_revenue: 700000000000,
+            interest_payments: 200000000000,
+            fx_reserves: 600000000000,
+            imports: 700000000000,
+            exports: 670000000000,
             fiscal_balance: -6,
             political_stability: 0.5,
             governance_score: 0.6,

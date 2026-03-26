@@ -2,7 +2,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Search, MapPin, Loader2, Calendar, Database, Info, Trash2, Globe, ArrowRight } from "lucide-react"
+import { Plus, Search, MapPin, Loader2, Globe, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -46,11 +46,19 @@ import Link from "next/link"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useToast } from "@/hooks/use-toast"
 
+const DEMO_COUNTRIES: Partial<Country>[] = [
+  { id: 'demo-in', name: "India", region: "South Asia", incomeGroup: "Emerging", currency: "INR" },
+  { id: 'demo-us', name: "USA", region: "North America", incomeGroup: "Advanced", currency: "USD" },
+  { id: 'demo-cn', name: "China", region: "East Asia", incomeGroup: "Emerging", currency: "CNY" },
+  { id: 'demo-de', name: "Germany", region: "Western Europe", incomeGroup: "Advanced", currency: "EUR" },
+  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL" },
+];
+
 export default function CountriesPage() {
   const db = useFirestore();
   const { toast } = useToast();
   const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
-  const { data: countries, isLoading } = useCollection<Country>(countriesQuery);
+  const { data: dbCountries, isLoading } = useCollection<Country>(countriesQuery);
 
   const [search, setSearch] = useState("")
   const [isAdding, setIsAdding] = useState(false)
@@ -71,9 +79,13 @@ export default function CountriesPage() {
     scenarioName: "Base Case 2024"
   })
 
+  // Merge DB countries with demo ones if DB is nearly empty
+  const countries = (dbCountries && dbCountries.length > 1) 
+    ? dbCountries 
+    : [...(dbCountries || []), ...DEMO_COUNTRIES.filter(d => !(dbCountries || []).some(c => c.name === d.name))];
+
   const handleAdd = async () => {
     if (!newCountry.name || !newCountry.region || !newCountry.dataYear) return;
-    if ((newCountry.nominalGdp || 0) <= 0 || (newCountry.population || 0) <= 0) return;
     
     await addCountry(newCountry)
     setIsAdding(false)
@@ -97,26 +109,29 @@ export default function CountriesPage() {
   }
 
   const handleDelete = async (countryId: string, countryName: string) => {
+    if (countryId.startsWith('demo-')) {
+      toast({ title: "Read Only", description: "Demo entries cannot be deleted." });
+      return;
+    }
     try {
       const history = await getRatingHistory(countryId);
       if (history.length > 0) {
         toast({ 
           title: "Deletion Prohibited", 
-          description: "Cannot delete country with existing rating history. Clear history first.",
+          description: "Cannot delete country with existing rating history.",
           variant: "destructive"
         });
         return;
       }
 
       await deleteCountry(countryId);
-      toast({ title: "Sovereign Removed", description: `${countryName} has been deleted from the registry.` });
+      toast({ title: "Sovereign Removed", description: `${countryName} has been deleted.` });
     } catch (error) {
-      console.error("Delete Error:", error);
-      toast({ title: "Error", description: "Could not complete the deletion process.", variant: "destructive" });
+      toast({ title: "Error", description: "Could not complete deletion.", variant: "destructive" });
     }
   }
 
-  const filtered = (countries || []).filter(c => 
+  const filtered = (countries as Country[]).filter(c => 
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.region.toLowerCase().includes(search.toLowerCase())
   )
@@ -134,7 +149,7 @@ export default function CountriesPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary">Sovereign Registry</h1>
-          <p className="text-muted-foreground mt-1 text-lg">Central repository for geopolitical entities and static market metadata.</p>
+          <p className="text-muted-foreground mt-1 text-lg">Central repository for global geopolitical entities.</p>
         </div>
         <Dialog open={isAdding} onOpenChange={setIsAdding}>
           <DialogTrigger asChild>
@@ -177,17 +192,6 @@ export default function CountriesPage() {
                         <Input value={newCountry.currency} onChange={e => setNewCountry({...newCountry, currency: e.target.value})} />
                     </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                        <label className="text-xs font-bold uppercase text-muted-foreground">Static GDP ($B)</label>
-                        <Input type="number" value={newCountry.nominalGdp} onChange={e => setNewCountry({...newCountry, nominalGdp: Number(e.target.value)})} />
-                    </div>
-                    <div className="grid gap-2">
-                        <label className="text-xs font-bold uppercase text-muted-foreground">Base Population (M)</label>
-                        <Input type="number" value={newCountry.population} onChange={e => setNewCountry({...newCountry, population: Number(e.target.value)})} />
-                    </div>
-                </div>
                 </div>
             </ScrollArea>
             <DialogFooter>
@@ -220,51 +224,45 @@ export default function CountriesPage() {
                     <MapPin className="w-3 h-3" /> {country.region}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Sovereign Profile?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Are you sure you want to remove <b>{country.name}</b> from the registry? 
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction 
-                          onClick={() => handleDelete(country.id, country.name)}
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        >
-                          Delete Permanently
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
+                {!country.id.startsWith('demo-') && (
+                  <div className="flex items-center gap-2">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete Sovereign Profile?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to remove <b>{country.name}</b>?
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction 
+                            onClick={() => handleDelete(country.id, country.name)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                )}
               </div>
             </CardHeader>
             <CardContent className="pt-6 space-y-6">
-              <div className="grid grid-cols-2 gap-y-4 gap-x-4">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Market Class</p>
-                  <Badge variant="secondary" className="font-bold">{country.incomeGroup}</Badge>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Currency</p>
-                  <p className="text-sm font-black text-slate-900">{country.currency}</p>
-                </div>
+              <div className="flex items-center gap-4 text-sm font-bold text-slate-700">
+                <Badge variant="secondary" className="font-bold">{country.incomeGroup}</Badge>
+                <span className="text-slate-300">|</span>
+                <span>{country.currency}</span>
               </div>
 
-              <div className="pt-4 border-t flex gap-2">
-                <Button variant="outline" className="flex-1 font-bold h-10">
-                  View Details
-                </Button>
-                <Button asChild className="flex-1 bg-slate-900 font-bold h-10 shadow-lg hover:shadow-xl transition-all">
+              <div className="pt-4 border-t">
+                <Button asChild className="w-full bg-slate-900 font-bold h-11 shadow-lg hover:shadow-xl transition-all">
                   <Link href={`/rate/${country.id}/init`}>
                     Start Rating
                   </Link>

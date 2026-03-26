@@ -1,7 +1,6 @@
-
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Search, MapPin, Loader2, Globe, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -71,13 +70,22 @@ export default function CountriesPage() {
     nominalGdp: 0,
     gdpPerCapita: 0,
     inflation: 0,
-    dataYear: new Date().getFullYear(),
+    dataYear: 2025,
     primaryDataSource: "IMF",
     equityIndex: "",
     bondYield10Y: 0,
     fxRate: 1,
-    scenarioName: "Base Case 2024"
+    scenarioName: "Base Case 2025"
   })
+
+  useEffect(() => {
+    // Correctly update dynamic values after hydration
+    setNewCountry(prev => ({
+      ...prev,
+      dataYear: new Date().getFullYear(),
+      scenarioName: `Base Case ${new Date().getFullYear()}`
+    }));
+  }, []);
 
   // Merge DB countries with demo ones if DB is nearly empty
   const countries = (dbCountries && dbCountries.length > 1) 
@@ -103,7 +111,7 @@ export default function CountriesPage() {
       equityIndex: "",
       bondYield10Y: 0,
       fxRate: 1,
-      scenarioName: "Base Case 2024"
+      scenarioName: `Base Case ${new Date().getFullYear()}`
     })
     toast({ title: "Sovereign Registered", description: `${newCountry.name} has been added to the registry.` });
   }

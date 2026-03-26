@@ -1,9 +1,8 @@
-
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Check } from "lucide-react"
+import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useCollection, useMemoFirebase, useFirestore } from "@/firebase"
@@ -34,6 +33,7 @@ import { cn } from "@/lib/utils"
 export default function DashboardPage() {
   const db = useFirestore();
   const [selectedCountryIds, setSelectedCountryIds] = useState<string[]>([])
+  const [transitionData, setTransitionData] = useState<any[]>([])
 
   // Real-time countries collection
   const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
@@ -58,6 +58,40 @@ export default function DashboardPage() {
     }
   }, [countries, selectedCountryIds.length])
 
+  // Compute transition data on client side after hydration
+  useEffect(() => {
+    if (!allRatings || !countries || selectedCountryIds.length === 0) {
+      setTransitionData([]);
+      return;
+    }
+
+    // Get all unique dates (formatted) across all ratings
+    const dates = Array.from(new Set(allRatings.map(r => {
+      const d = r.createdAt?.toDate ? r.createdAt.toDate() : new Date();
+      return d.toLocaleDateString();
+    }))).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+    const computed = dates.map(dateStr => {
+      const entry: any = { date: dateStr };
+      selectedCountryIds.forEach(cid => {
+        const country = countries.find(c => c.id === cid);
+        if (!country) return;
+
+        const ratingOnDate = allRatings.find(r => {
+          const rd = r.createdAt?.toDate ? r.createdAt.toDate() : new Date();
+          return rd.toLocaleDateString() === dateStr && r.countryId === cid;
+        });
+
+        if (ratingOnDate) {
+          entry[country.name] = ratingOnDate.finalScore;
+        }
+      });
+      return entry;
+    });
+
+    setTransitionData(computed);
+  }, [allRatings, countries, selectedCountryIds]);
+
   const stats = {
     countries: countries?.length || 0,
     ratings: allRatings?.length || 0,
@@ -71,37 +105,6 @@ export default function DashboardPage() {
     ...r,
     countryName: countries?.find(c => c.id === r.countryId)?.name || 'Unknown Sovereign'
   }))
-
-  // Transform data for the line chart
-  const transitionData = useMemo(() => {
-    if (!allRatings || !countries) return []
-
-    // Get all unique dates (formatted) across selected ratings
-    const dates = Array.from(new Set(allRatings.map(r => {
-      const d = r.createdAt?.toDate ? r.createdAt.toDate() : new Date();
-      return d.toLocaleDateString();
-    }))).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-
-    // Map dates to country scores
-    return dates.map(dateStr => {
-      const entry: any = { date: dateStr };
-      selectedCountryIds.forEach(cid => {
-        const country = countries.find(c => c.id === cid);
-        if (!country) return;
-
-        // Find the rating for this country on this date, or the latest one before it
-        const ratingOnDate = allRatings.find(r => {
-          const rd = r.createdAt?.toDate ? r.createdAt.toDate() : new Date();
-          return rd.toLocaleDateString() === dateStr && r.countryId === cid;
-        });
-
-        if (ratingOnDate) {
-          entry[country.name] = ratingOnDate.finalScore;
-        }
-      });
-      return entry;
-    });
-  }, [allRatings, countries, selectedCountryIds]);
 
   const toggleCountry = (id: string) => {
     setSelectedCountryIds(prev => 

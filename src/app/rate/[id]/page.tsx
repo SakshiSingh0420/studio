@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -32,6 +31,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
+import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -111,7 +111,7 @@ export default function RatingExecutionPage() {
             const name = (p.name || "").toLowerCase();
             
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
-                const debt = context['government_debt'] || context['debt'] || 0;
+                const debt = context['government_debt'] || context['debt'] || context['government_debt'] || 0;
                 const gdp = context['gdp'] || 1;
                 results[p.id] = (debt / gdp) * 100;
             } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
@@ -119,8 +119,8 @@ export default function RatingExecutionPage() {
                 const imp = context['imports'] || 1;
                 results[p.id] = res / imp;
             } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
-                const int = context['interest_payments'] || 0;
-                const rev = context['government_revenue'] || 1;
+                const int = context['interest_payments'] || context['interest'] || 0;
+                const rev = context['government_revenue'] || context['revenue'] || 1;
                 results[p.id] = (int / rev) * 100;
             } else if (p.formula) {
                 results[p.id] = evaluateFormula(p.formula, context);
@@ -147,47 +147,38 @@ export default function RatingExecutionPage() {
         toast({ title: "Analysis Finalized", description: `Aggregate Score: ${result.finalScore.toFixed(1)}%` })
     }
 
-    const handleSuggest = () => {
+    const handleSuggest = async () => {
         if (!country) return;
         setIsGenerating(true)
         
-        const demoData: Record<string, number> = {
-            gdp: 3400000000000, 
-            gdp_growth: 6.5,
-            gdp_per_capita: 2400,
-            inflation: 5.5,
-            government_debt: 3000000000000,
-            government_revenue: 700000000000,
-            interest_payments: 200000000000,
-            fx_reserves: 600000000000,
-            imports: 700000000000,
-            exports: 670000000000,
-            political_stability: 0.5,
-            governance_score: 0.6,
-            climate_risk: 0.4,
-            social_risk: 0.5,
-            inflation_volatility: 2.5,
-            exchange_rate_volatility: 3
-        };
+        try {
+            const data = await suggestFactSheetData({ 
+                countryName: country.name,
+                currency: country.currency 
+            });
 
-        const filled = new Set<string>();
-        const nextFactSheet = { ...factSheet };
+            const filled = new Set<string>();
+            const nextFactSheet = { ...factSheet };
 
-        parameters.forEach(p => {
-            if (p.type !== 'raw') return;
-            const slug = (p.slug || "").toLowerCase().replace(/[-\s]/g, '_');
-            const name = (p.name || "").toLowerCase().replace(/[\s-]/g, '_');
-            const val = demoData[slug] ?? demoData[name] ?? demoData[p.id];
-            if (val !== undefined) {
-                nextFactSheet[p.id] = val;
-                filled.add(p.id);
-            }
-        });
+            parameters.forEach(p => {
+                if (p.type !== 'raw') return;
+                const slug = (p.slug || "").toLowerCase();
+                const val = (data as any)[slug] || (data as any)[p.id];
+                if (val !== undefined && val !== null) {
+                    nextFactSheet[p.id] = val;
+                    filled.add(p.id);
+                }
+            });
 
-        setFactSheet(nextFactSheet);
-        setAutoFilledFields(filled);
-        setIsGenerating(false);
-        toast({ title: "Demo Data Populated", description: "Harvested latest sovereign benchmarks." })
+            setFactSheet(nextFactSheet);
+            setAutoFilledFields(filled);
+            toast({ title: "AI Data Retrieved", description: `Financial benchmarks for ${country.name} synchronized in ${country.currency}.` });
+        } catch (error) {
+            console.error("AI Fetch Error:", error);
+            toast({ variant: "destructive", title: "Fetch Failed", description: "Could not retrieve analytical benchmarks." });
+        } finally {
+            setIsGenerating(false);
+        }
     }
 
     // AI Rationale Generation on Review Phase

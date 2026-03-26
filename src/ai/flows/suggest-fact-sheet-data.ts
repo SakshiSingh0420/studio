@@ -12,21 +12,22 @@ import {z} from 'genkit';
 
 const SuggestFactSheetDataInputSchema = z.object({
   countryName: z.string().describe('The name of the country for which to suggest fact sheet data.'),
+  currency: z.string().optional().default('INR').describe('The reporting currency of the country.'),
 });
 export type SuggestFactSheetDataInput = z.infer<typeof SuggestFactSheetDataInputSchema>;
 
 const FactSheetDataOutputSchema = z.object({
-  gdp: z.number().nullable().describe('Gross Domestic Product in current US dollars.'),
+  gdp: z.number().nullable().describe('Gross Domestic Product in reporting currency.'),
   gdp_growth: z.number().nullable().describe('Annual GDP growth rate as a percentage (e.g., 3.5 for 3.5%).'),
   inflation: z.number().nullable().describe('Annual inflation rate as a percentage.'),
-  debt: z.number().nullable().describe('Government debt in current US dollars.'),
-  revenue: z.number().nullable().describe('Government revenue in current US dollars.'),
-  interest: z.number().nullable().describe('Government interest payments on debt in current US dollars.'),
-  fx_reserves: z.number().nullable().describe('Foreign exchange reserves in current US dollars.'),
-  imports: z.number().nullable().describe('Total imports of goods and services in current US dollars.'),
-  exports: z.number().nullable().describe('Total exports of goods and services in current US dollars.'),
-  external_debt: z.number().nullable().describe('Total external debt in current US dollars.'),
-  debt_service: z.number().nullable().describe('External debt service in current US dollars.'),
+  debt: z.number().nullable().describe('Government debt in reporting currency.'),
+  revenue: z.number().nullable().describe('Government revenue in reporting currency.'),
+  interest: z.number().nullable().describe('Government interest payments on debt in reporting currency.'),
+  fx_reserves: z.number().nullable().describe('Foreign exchange reserves in reporting currency.'),
+  imports: z.number().nullable().describe('Total imports of goods and services in reporting currency.'),
+  exports: z.number().nullable().describe('Total exports of goods and services in reporting currency.'),
+  external_debt: z.number().nullable().describe('Total external debt in reporting currency.'),
+  debt_service: z.number().nullable().describe('External debt service in reporting currency.'),
   governance_score: z.number().nullable().describe('A composite governance score or index.'),
   political_stability: z.number().nullable().describe('A political stability indicator or score.'),
   climate_risk: z.number().nullable().describe('A climate risk score or index.'),
@@ -60,7 +61,7 @@ Retrieve the following specific data points:
 - A political stability indicator or score (political_stability)
 - A climate risk score or index (climate_risk)
 
-For all monetary values, provide them in current US dollars as plain numbers. 
+For all monetary values, provide them in the specified reporting currency: {{{currency}}} as plain numbers. 
 For rates, provide them as a percentage number (e.g., 3.5 for 3.5%).
 For scores, provide them as numerical values.
 

@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from "react"
@@ -66,7 +65,7 @@ export default function CountriesPage() {
     name: "",
     region: "",
     incomeGroup: "Emerging",
-    currency: "USD",
+    currency: "INR",
     population: 0,
     nominalGdp: 0,
     gdpPerCapita: 0,
@@ -93,7 +92,7 @@ export default function CountriesPage() {
       name: "",
       region: "",
       incomeGroup: "Emerging",
-      currency: "USD",
+      currency: "INR",
       population: 0,
       nominalGdp: 0,
       gdpPerCapita: 0,

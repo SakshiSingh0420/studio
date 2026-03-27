@@ -294,52 +294,65 @@ export default function RatingExecutionPage() {
         toast({ title: "Analysis Finalized", description: `Aggregate Score: ${result.finalScore.toFixed(1)}%` })
     }
 
-    const handleSuggest = async () => {
-        if (!country) return;
-        setIsGenerating(true)
+    const handleAutoFetch = () => {
+        if (!country || !selectedModel || !selectedScale || !parameters.length) return;
         
-        try {
-            // LOAD STATIC DATASET
-            const data = STATIC_DATASETS[country.name] || null;
+        setIsGenerating(true)
+        console.log("Auto Fetch Triggered for country:", country.name);
+        
+        const benchmarkData = STATIC_DATASETS[country.name] || null;
 
-            if (!data) {
-                toast({ variant: "destructive", title: "No Benchmark Data", description: `Static dataset not found for ${country.name}.` });
-                return;
+        if (!benchmarkData) {
+            toast({ variant: "destructive", title: "No Benchmark Data", description: `Static dataset not found for ${country.name}.` });
+            setIsGenerating(false);
+            return;
+        }
+
+        const filled = new Set<string>();
+        const nextFactSheet: FactSheetData = { ...factSheet };
+
+        parameters.forEach(p => {
+            if (p.type !== 'raw') return;
+            
+            const slug = (p.slug || "").toLowerCase();
+            const name = (p.name || "").toLowerCase();
+            const normalizedSlug = slug.replace(/[\s-_]/g, "");
+            const normalizedName = name.replace(/[\s-_]/g, "");
+
+            // Robust matching against benchmark data keys
+            const val = (benchmarkData as any)[slug] ?? 
+                        (benchmarkData as any)[normalizedSlug] ?? 
+                        (benchmarkData as any)[normalizedName] ?? 
+                        (benchmarkData as any)[p.id] ?? 
+                        null;
+
+            if (val !== undefined && val !== null) {
+                nextFactSheet[p.id] = val;
+                filled.add(p.id);
             }
+        });
 
-            const filled = new Set<string>();
-            const nextFactSheet = { ...factSheet };
-
+        // 1. Update State with Predefined Dataset
+        setFactSheet(nextFactSheet);
+        setAutoFilledFields(filled);
+        
+        // 2. Force Immediate Re-calculation
+        // We pass the fresh data object directly to runDynamicRating to ensure calculation uses current fetch
+        setTimeout(() => {
+            const numericInputs: Record<string, number> = {};
             parameters.forEach(p => {
-                if (p.type !== 'raw') return;
-                
-                const slug = (p.slug || "").toLowerCase();
-                const name = (p.name || "").toLowerCase();
-                const normalizedSlug = slug.replace(/[\s-_]/g, "");
-                const normalizedName = name.replace(/[\s-_]/g, "");
-
-                // Robust matching against static data keys
-                const val = (data as any)[slug] ?? 
-                            (data as any)[normalizedSlug] ?? 
-                            (data as any)[normalizedName] ?? 
-                            (data as any)[p.id] ?? 
-                            null;
-
-                if (val !== undefined && val !== null) {
-                    nextFactSheet[p.id] = val;
-                    filled.add(p.id);
-                }
+                const rawVal = nextFactSheet[p.id];
+                const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+                numericInputs[p.id] = val;
             });
 
-            setFactSheet(nextFactSheet);
-            setAutoFilledFields(filled);
-            toast({ title: "Sovereign Benchmarks Loaded", description: `Analytical profile for ${country.name} synchronized.` });
-        } catch (error) {
-            console.error("Fetch Error:", error);
-            toast({ variant: "destructive", title: "Fetch Failed", description: "Could not retrieve analytical benchmarks." });
-        } finally {
-            setIsGenerating(false);
-        }
+            const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
+            setCalculation(result);
+            console.log("Analytical Recalculation Complete:", result);
+        }, 0);
+
+        setIsGenerating(false);
+        toast({ title: "Sovereign Benchmarks Loaded", description: `Analytical profile for ${country.name} synchronized.` });
     }
 
     useEffect(() => {
@@ -462,7 +475,7 @@ export default function RatingExecutionPage() {
                                         <CardTitle className="text-3xl font-black text-slate-900">Country Fact Sheet</CardTitle>
                                         <CardDescription className="text-slate-500 font-medium text-base mt-1">Capture macroeconomic and fiscal variables for analysis.</CardDescription>
                                     </div>
-                                    <Button size="sm" variant="outline" onClick={handleSuggest} disabled={isGenerating} className="border-2 font-bold h-10 px-6 hover:bg-slate-50 transition-colors">
+                                    <Button size="sm" variant="outline" onClick={handleAutoFetch} disabled={isGenerating} className="border-2 font-bold h-10 px-6 hover:bg-slate-50 transition-colors">
                                         <Zap className="w-3.5 h-3.5 mr-2 text-yellow-500 fill-yellow-500" /> Auto Fetch Data
                                     </Button>
                                 </CardHeader>
@@ -726,4 +739,3 @@ export default function RatingExecutionPage() {
         </div>
     )
 }
-

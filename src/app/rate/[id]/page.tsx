@@ -217,6 +217,7 @@ export default function RatingExecutionPage() {
 
     /**
      * REACTIVE ANALYTICAL CONTEXT
+     * This re-calculates derived metrics whenever the factSheet changes.
      */
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
@@ -241,16 +242,16 @@ export default function RatingExecutionPage() {
             let resultValue = 0;
 
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
-                const debt = context['government_debt'] || context['debt'] || context['total_debt'] || 0;
+                const debt = context['government_debt'] || context['debt'] || context['total_debt'] || context['governmentdebt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
                 resultValue = (debt / (gdp || 1)) * 100;
             } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
-                const res = context['fx_reserves'] || context['reserves'] || 0;
+                const res = context['fx_reserves'] || context['reserves'] || context['fxreserves'] || 0;
                 const imp = context['imports'] || 1;
                 resultValue = res / (imp || 1);
             } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
-                const int = context['interest_payments'] || context['interest'] || 0;
-                const rev = context['government_revenue'] || context['revenue'] || 1;
+                const int = context['interest_payments'] || context['interest'] || context['interestpayments'] || 0;
+                const rev = context['government_revenue'] || context['revenue'] || context['governmentrevenue'] || 1;
                 resultValue = (int / (rev || 1)) * 100;
             } else if (p.formula) {
                 resultValue = evaluateFormula(p.formula, context);
@@ -305,7 +306,7 @@ export default function RatingExecutionPage() {
         const nextFactSheet: FactSheetData = { ...factSheet };
         const filled = new Set<string>();
 
-        // We use a fuzzy mapping strategy to ensure data patches correctly
+        // We use a robust mapping strategy to ensure data patches correctly
         parameters.forEach(p => {
             if (p.type !== 'raw') return;
             
@@ -320,14 +321,15 @@ export default function RatingExecutionPage() {
                        lk === name || 
                        lk === id || 
                        lk === slug.replace(/_/g, " ") ||
-                       slug.includes(lk);
+                       slug.includes(lk) ||
+                       lk.includes(slug);
             });
 
             if (benchMatchKey) {
                 const val = (benchmarkData as any)[benchMatchKey];
                 nextFactSheet[p.id] = val;
                 filled.add(p.id);
-                console.log(`AutoFetch: Mapped benchmark [${benchMatchKey}] to parameter [${p.name}] value: ${val}`);
+                console.log(`AutoFetch: Patched [${benchMatchKey}] -> [${p.name}] with value: ${val}`);
             }
         });
 
@@ -336,6 +338,19 @@ export default function RatingExecutionPage() {
         setIsGenerating(false);
         
         toast({ title: "Sovereign Benchmarks Loaded", description: `Analytical profile for ${country.name} synchronized.` });
+        
+        // Also trigger an immediate calculation for the summary if we have all data
+        const numericInputs: Record<string, number> = {};
+        parameters.forEach(p => {
+            const rawVal = nextFactSheet[p.id];
+            const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+            numericInputs[p.id] = val;
+        });
+        
+        if (selectedModel && selectedScale) {
+            const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters);
+            setCalculation(result);
+        }
     }
 
     useEffect(() => {

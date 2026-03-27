@@ -85,7 +85,7 @@ export default function RatingExecutionPage() {
                 
                 if (yearStr) setExecutionYear(Number(yearStr))
                 
-                const initialModel = mId ? modelsData.find(m => m.id === mId) : modelsData[0]
+                const initialModel = mId ? modelsData.find(m => m.id === mId) : modelsData.find(m => m.isDefault && m.isActive) || modelsData[0]
                 const initialScale = sId ? scalesData.find(s => s.id === sId) : scalesData[0]
                 
                 if (initialModel) setSelectedModel(initialModel)
@@ -99,21 +99,31 @@ export default function RatingExecutionPage() {
         load()
     }, [id, searchParams])
 
+    // AUTOMATIC DERIVED CALCULATIONS:
+    // This hook ensures that Live Analytical Ratios are calculated automatically on load and field changes.
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
         const context: Record<string, number> = {}; 
+        
+        // 1. Build a comprehensive context (IDs and Slugs)
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
             context[p.id] = val;
+            if (p.slug) {
+                context[p.slug.toLowerCase()] = val;
+            }
         });
         
         const results: Record<string, number> = {};
+
+        // 2. Resolve Derived Metrics
         parameters.filter(p => p.type === 'derived').forEach(p => {
             const slug = (p.slug || "").toLowerCase();
             const name = (p.name || "").toLowerCase();
             
+            // Standard macro-fiscal formulas
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || 0;
                 const gdp = context['gdp'] || 1;
@@ -349,6 +359,8 @@ export default function RatingExecutionPage() {
                                         else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) formulaDisplay = 'Reserves / Imports';
                                         else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) formulaDisplay = '(Interest / Revenue) × 100';
 
+                                        const val = liveDerivedMetrics[p.id] ?? 0;
+
                                         return (
                                             <div key={p.id} className="p-8 bg-white rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col justify-between transition-all hover:border-primary/30 hover:shadow-md group">
                                                 <div className="space-y-4">
@@ -358,7 +370,7 @@ export default function RatingExecutionPage() {
                                                     </div>
                                                     <div className="text-right">
                                                         <p className="text-4xl font-black text-primary leading-none tracking-tighter">
-                                                            {(liveDerivedMetrics[p.id] ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            {val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -528,7 +540,7 @@ export default function RatingExecutionPage() {
                                                 <CardContent className="p-6">
                                                     <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4">Key Credit Strengths</h4>
                                                     <ul className="space-y-2">
-                                                        {Object.entries(calculation.transformedScores)
+                                                        {Object.entries(calculation.transformedScores || {})
                                                             .filter(([_, score]: any) => score >= 4)
                                                             .slice(0, 3)
                                                             .map(([pid, _]) => (
@@ -544,7 +556,7 @@ export default function RatingExecutionPage() {
                                                 <CardContent className="p-6">
                                                     <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4">Risk Constraints</h4>
                                                     <ul className="space-y-2">
-                                                        {Object.entries(calculation.transformedScores)
+                                                        {Object.entries(calculation.transformedScores || {})
                                                             .filter(([_, score]: any) => score <= 2)
                                                             .slice(0, 3)
                                                             .map(([pid, _]) => (

@@ -42,26 +42,31 @@ export default function RatingInitiationPage() {
     const [targetYear, setTargetYear] = useState<number>(2025)
     const [loading, setLoading] = useState(true)
 
-    const sizeCategory = useMemo(() => {
-        if (!country?.gdpSnapshot) return "Small";
-        if (country.gdpSnapshot < 500) return "Small";
-        if (country.gdpSnapshot <= 2000) return "Medium";
-        return "Large";
-    }, [country]);
-
     const getModelApplicability = (model: RatingModel) => {
         if (!country) return { score: 0, label: "Not Recommended", variant: "destructive" as const };
         
         let score = 0;
-        const app = model.applicability || {};
-        
-        if (app.marketType?.includes(country.region)) score += 50;
-        if (app.incomeGroup?.includes(country.incomeGroup)) score += 25;
-        if (app.sizeCategory?.includes(sizeCategory)) score += 25;
+        const modelName = model.name.toLowerCase();
+        const incomeGroup = country.incomeGroup;
 
-        if (score >= 75) return { score, label: "Highly Applicable", variant: "default" as const };
-        if (score >= 50) return { score, label: "Applicable", variant: "secondary" as const };
-        return { score, label: "Not Recommended", variant: "outline" as const };
+        // Matching logic based on Market Classification / Income Group
+        // Priority 1: Direct name matching for common templates
+        if (incomeGroup === "Emerging" && modelName.includes("emerging")) {
+            score = 100;
+        } else if (incomeGroup === "Advanced" && (modelName.includes("advanced") || modelName.includes("developed"))) {
+            score = 100;
+        } else if (incomeGroup === "Frontier" && modelName.includes("frontier")) {
+            score = 100;
+        }
+
+        // Priority 2: Explicit metadata matching in model applicability object
+        if (score === 0 && model.applicability?.incomeGroup?.includes(incomeGroup)) {
+            score = 80;
+        }
+
+        if (score >= 90) return { score, label: "Highly Recommended", variant: "default" as const };
+        if (score >= 70) return { score, label: "Recommended", variant: "secondary" as const };
+        return { score, label: "Alternative Framework", variant: "outline" as const };
     };
 
     const sortedModels = useMemo(() => {
@@ -70,7 +75,7 @@ export default function RatingInitiationPage() {
             const scoreB = getModelApplicability(b).score;
             return scoreB - scoreA;
         });
-    }, [models, country, sizeCategory]);
+    }, [models, country]);
 
     useEffect(() => {
         async function load() {
@@ -163,13 +168,9 @@ export default function RatingInitiationPage() {
                                 <p className="font-bold text-slate-700">{country?.region}</p>
                             </div>
                             <div className="space-y-1">
-                                <p className="text-xs font-bold text-muted-foreground uppercase">Income Group</p>
-                                <p className="font-bold text-slate-700">{country?.incomeGroup}</p>
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-xs font-bold text-muted-foreground uppercase">Size Category</p>
+                                <p className="text-xs font-bold text-muted-foreground uppercase">Market Classification</p>
                                 <Badge variant="outline" className="font-bold border-primary/30 text-primary">
-                                    {sizeCategory} ({country?.gdpSnapshot ? `$${country.gdpSnapshot}B` : 'N/A'})
+                                    {country?.incomeGroup}
                                 </Badge>
                             </div>
                         </div>
@@ -208,14 +209,14 @@ export default function RatingInitiationPage() {
 
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
-                                <label className="text-xs font-bold text-slate-900 uppercase">Analytical Model</label>
+                                <label className="text-xs font-bold text-slate-900 uppercase">Analytical Model suitability</label>
                                 <TooltipProvider>
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <Info className="w-3 h-3 text-muted-foreground cursor-help" />
                                         </TooltipTrigger>
                                         <TooltipContent className="max-w-[200px] text-[10px] p-2">
-                                            Models are ranked by applicability to the country's economic profile.
+                                            Models are ranked by analytical fit to the country's market classification.
                                         </TooltipContent>
                                     </Tooltip>
                                 </TooltipProvider>

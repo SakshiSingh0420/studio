@@ -165,7 +165,6 @@ export default function RatingExecutionPage() {
     const searchParams = useSearchParams()
     const { toast } = useToast()
     
-    // Robust ID extraction from useParams
     const rawId = params?.id
     const id = useMemo(() => {
         if (!rawId) return null;
@@ -193,8 +192,6 @@ export default function RatingExecutionPage() {
     useEffect(() => {
         async function load() {
             if (!id) return;
-            console.log("Loading Rating Execution for ID:", id);
-
             try {
                 const [dbCountries, modelsData, scalesData, paramsData] = await Promise.all([
                     getCountries(),
@@ -203,7 +200,6 @@ export default function RatingExecutionPage() {
                     getParameters()
                 ])
                 
-                // Merge demo countries so 'demo-us' etc are correctly identified
                 const allCountries = [
                     ...dbCountries,
                     ...DEMO_COUNTRIES.filter(d => !dbCountries.some(c => c.name.toLowerCase() === d.name?.toLowerCase()))
@@ -211,12 +207,9 @@ export default function RatingExecutionPage() {
 
                 const found = allCountries.find(c => String(c.id) === String(id))
                 if (found) {
-                    console.log("Execution Country Found:", found.name);
                     setCountry(found)
                     const saved = await getFactSheet(found.id)
                     if (saved) setFactSheet(saved)
-                } else {
-                    console.warn("Execution Country NOT Found for ID:", id);
                 }
                 
                 setModels(modelsData)
@@ -243,10 +236,6 @@ export default function RatingExecutionPage() {
         load()
     }, [id, searchParams])
 
-    /**
-     * REACTIVE ANALYTICAL CONTEXT
-     * This re-calculates derived metrics whenever the factSheet changes.
-     */
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
@@ -312,7 +301,6 @@ export default function RatingExecutionPage() {
 
     const handleAutoFetch = () => {
         if (!country) {
-            console.error("Auto Fetch Failed: 'country' state is null.");
             toast({ title: "No country selected", variant: "destructive" });
             return;
         }
@@ -328,7 +316,6 @@ export default function RatingExecutionPage() {
     
         setIsGenerating(true);
     
-        // 🔹 Robust country matching
         const countryKey = Object.keys(STATIC_DATASETS).find(
             key => key.toLowerCase() === country.name.toLowerCase()
         );
@@ -344,8 +331,30 @@ export default function RatingExecutionPage() {
             setIsGenerating(false);
             return;
         }
+
+        // INTRODUCE EXPLICIT FIELD MAPPING
+        const FIELD_MAP: Record<string, string> = {
+            gdp: "gdp_nominal",
+            government_debt: "government_debt",
+            debt: "government_debt",
+            government_revenue: "government_revenue",
+            revenue: "government_revenue",
+            fx_reserves: "fx_reserves",
+            imports: "imports",
+            exports: "exports",
+            inflation: "inflation",
+            inflation_volatility: "inflation_volatility",
+            gdp_growth: "gdp_growth",
+            fiscal_balance: "fiscal_balance",
+            interest_payments: "interest_payments",
+            governance_score: "governance_score",
+            political_stability: "political_stability",
+            social_risk: "social_risk",
+            climate_risk: "climate_risk",
+            exchange_rate_volatility: "exchange_rate_volatility",
+            gdp_per_capita: "gdp_per_capita"
+        };
     
-        // 1. BUILD NEW OBJECT CLEANLY (No mutation)
         const nextFactSheet: FactSheetData = {};
         const filled = new Set<string>();
     
@@ -356,21 +365,27 @@ export default function RatingExecutionPage() {
             const name = (p.name || "").toLowerCase();
             const id = p.id.toLowerCase();
     
-            // 4. EXACT MAPPING ONLY (No complex partial matching)
-            const benchMatchKey = Object.keys(benchmarkData).find(k => {
-                const lk = k.toLowerCase();
-                return lk === slug || lk === name || lk === id;
-            });
+            // STRICT EXPLICIT MAPPING
+            const key =
+              FIELD_MAP[slug] ||
+              FIELD_MAP[name] ||
+              FIELD_MAP[id];
     
-            if (benchMatchKey) {
-                nextFactSheet[p.id] = benchmarkData[benchMatchKey];
-                filled.add(p.id);
+            if (key && benchmarkData[key] !== undefined) {
+              nextFactSheet[p.id] = benchmarkData[key];
+              filled.add(p.id);
+              
+              console.log("AUTO FETCH MAPPING", {
+                param: p.id,
+                slug,
+                mappedKey: key,
+                value: benchmarkData[key]
+              });
             }
         });
     
-        console.log("FINAL FACTSHEET:", nextFactSheet); // 5. ADD DEBUG
+        console.log("FINAL FACTSHEET:", nextFactSheet); 
     
-        // 3. FORCE NEW STATE OBJECT (Ensures React detects the change)
         setFactSheet({ ...nextFactSheet });
         setAutoFilledFields(filled);
         setIsGenerating(false);

@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Plus, BarChart3, Target } from "lucide-react"
+import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Plus, BarChart3, Target, Activity } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useCollection, useMemoFirebase, useFirestore } from "@/firebase"
@@ -20,9 +20,9 @@ import {
   Legend, 
   ResponsiveContainer,
   ReferenceLine,
-  BarChart,
-  Bar,
-  Cell
+  ReferenceArea,
+  AreaChart,
+  Area
 } from "recharts"
 import {
   DropdownMenu,
@@ -158,6 +158,28 @@ export default function DashboardPage() {
     "#8b5cf6", // Violet
   ]
 
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white border-2 border-slate-100 shadow-2xl rounded-2xl p-4 min-w-[200px]">
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3 border-b pb-2">{label}</p>
+          <div className="space-y-3">
+            {payload.map((entry: any, index: number) => (
+              <div key={index} className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                  <span className="text-xs font-bold text-slate-700">{entry.name}</span>
+                </div>
+                <span className="text-sm font-black text-slate-900">{entry.value.toFixed(1)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -216,29 +238,32 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-7">
-        <Card className="lg:col-span-7 border-2 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between bg-slate-50/50 border-b py-6 px-8">
+        <Card className="lg:col-span-7 border-2 shadow-sm overflow-hidden">
+          <CardHeader className="flex flex-col md:flex-row md:items-center justify-between bg-white border-b py-8 px-10 gap-4">
             <div className="space-y-1">
-              <CardTitle className="text-xl font-black text-slate-900">Sovereign Rating Transition Analytics</CardTitle>
-              <CardDescription className="text-slate-500 font-medium">Comparative historical trend analysis of credit risk scores.</CardDescription>
+              <CardTitle className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                <Activity className="w-6 h-6 text-primary" />
+                Sovereign Rating Transitions
+              </CardTitle>
+              <CardDescription className="text-slate-500 font-medium text-base">Comparative historical trend analysis of quantitative risk scores.</CardDescription>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="border-2 font-bold h-10 px-4" suppressHydrationWarning>
+                <Button variant="outline" className="border-2 font-bold h-11 px-6 rounded-xl hover:bg-slate-50 transition-all" suppressHydrationWarning>
                   <Filter className="w-4 h-4 mr-2" /> 
-                  Compare ({selectedCountryIds.length})
+                  Compare Entities ({selectedCountryIds.length})
                   <ChevronDown className="ml-2 w-4 h-4 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Sovereign Entities</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-64 p-2 rounded-xl">
+                <DropdownMenuLabel className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 px-2">Sovereign Portfolio</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {countries.map(c => (
                   <DropdownMenuCheckboxItem
                     key={c.id}
                     checked={selectedCountryIds.includes(c.id)}
                     onCheckedChange={() => toggleCountry(c.id)}
-                    className="font-medium"
+                    className="font-bold py-2 px-3 rounded-lg cursor-pointer"
                   >
                     {c.name}
                   </DropdownMenuCheckboxItem>
@@ -246,18 +271,24 @@ export default function DashboardPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </CardHeader>
-          <CardContent className="pt-10 pb-6">
-            <div className="h-[400px] w-full">
+          <CardContent className="p-10">
+            <div className="h-[450px] w-full">
               {transitionData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={transitionData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <LineChart data={transitionData} margin={{ top: 20, right: 40, left: 10, bottom: 20 }}>
+                    <defs>
+                      <linearGradient id="primeZone" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.05}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis 
                       dataKey="date" 
                       axisLine={false} 
                       tickLine={false} 
                       tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
-                      dy={10}
+                      dy={15}
                     />
                     <YAxis 
                       domain={[0, 100]} 
@@ -265,20 +296,25 @@ export default function DashboardPage() {
                       tickLine={false} 
                       tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }}
                       dx={-10}
-                      label={{ value: 'Risk Score (%)', angle: -90, position: 'insideLeft', style: { fontWeight: 900, fontSize: 12, fill: '#1e293b' } }}
+                      tickFormatter={(val) => `${val}%`}
                     />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: '2px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px' }}
-                      labelStyle={{ fontWeight: 900, marginBottom: '8px', color: '#1e293b' }}
-                      itemStyle={{ fontWeight: 700, fontSize: '12px' }}
-                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    
+                    <ReferenceArea y1={80} y2={100} fill="#10b981" fillOpacity={0.03} />
+                    <ReferenceArea y1={50} y2={80} fill="#f59e0b" fillOpacity={0.02} />
+                    <ReferenceArea y1={0} y2={50} fill="#ef4444" fillOpacity={0.01} />
+
+                    <ReferenceLine y={80} label={{ value: 'PRIME', position: 'insideRight', fill: '#10b981', fontSize: 10, fontWeight: 900, dy: -10 }} stroke="#10b981" strokeDasharray="5 5" strokeOpacity={0.5} />
+                    <ReferenceLine y={50} label={{ value: 'INVESTMENT GRADE', position: 'insideRight', fill: '#f59e0b', fontSize: 10, fontWeight: 900, dy: -10 }} stroke="#f59e0b" strokeDasharray="5 5" strokeOpacity={0.5} />
+
                     <Legend 
                       verticalAlign="top" 
                       align="right" 
-                      height={36} 
+                      height={50} 
                       iconType="circle"
-                      wrapperStyle={{ fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                      wrapperStyle={{ fontWeight: 800, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: '20px' }}
                     />
+                    
                     {selectedCountryIds.map((cid, index) => {
                       const name = countries.find(c => c.id === cid)?.name;
                       if (!name) return null;
@@ -289,47 +325,51 @@ export default function DashboardPage() {
                           dataKey={name}
                           stroke={chartColors[index % chartColors.length]}
                           strokeWidth={4}
-                          dot={{ r: 6, strokeWidth: 2, fill: 'white' }}
-                          activeDot={{ r: 8, strokeWidth: 0 }}
-                          animationDuration={1500}
+                          dot={{ r: 5, strokeWidth: 3, fill: 'white' }}
+                          activeDot={{ r: 8, strokeWidth: 0, fill: chartColors[index % chartColors.length] }}
+                          animationDuration={2000}
+                          connectNulls
                         />
                       );
                     })}
-                    <ReferenceLine y={80} label={{ value: 'Prime', position: 'right', fill: '#10b981', fontSize: 10, fontWeight: 900 }} stroke="#10b981" strokeDasharray="5 5" />
-                    <ReferenceLine y={50} label={{ value: 'Inv. Grade', position: 'right', fill: '#f59e0b', fontSize: 10, fontWeight: 900 }} stroke="#f59e0b" strokeDasharray="5 5" />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full space-y-4 border-2 border-dashed rounded-3xl bg-slate-50/50">
-                  <Clock className="w-12 h-12 text-slate-200" />
-                  <p className="text-slate-400 font-black uppercase text-xs tracking-widest">Insufficient Rating Data to Plot Transition</p>
+                <div className="flex flex-col items-center justify-center h-full space-y-6 border-4 border-dashed rounded-[3rem] bg-slate-50/50">
+                  <div className="p-6 bg-white rounded-full shadow-lg">
+                    <Activity className="w-12 h-12 text-slate-200" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-slate-400 font-black uppercase text-sm tracking-widest mb-1">Insufficient Analytical Data</p>
+                    <p className="text-slate-400/60 font-medium text-xs">Execute more rating sessions to visualize portfolio transitions.</p>
+                  </div>
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-4 border-2 shadow-sm">
-          <CardHeader className="bg-slate-50/50 border-b py-6 px-8">
-            <CardTitle className="text-xl font-black text-slate-900">Sovereign Registry Portfolio</CardTitle>
-            <CardDescription className="text-slate-500 font-medium">Direct view of active entities synchronized from live Firestore repository.</CardDescription>
+        <Card className="lg:col-span-4 border-2 shadow-sm overflow-hidden">
+          <CardHeader className="bg-slate-50/50 border-b py-8 px-10">
+            <CardTitle className="text-xl font-black text-slate-900">Portfolio Registry</CardTitle>
+            <CardDescription className="text-slate-500 font-medium">Real-time view of active sovereign entities.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table className="financial-table">
               <TableHeader className="bg-slate-50/80">
                 <TableRow>
-                  <TableHead className="px-8 font-black uppercase text-xs text-slate-500">Sovereign Entity</TableHead>
-                  <TableHead className="font-black uppercase text-xs text-slate-500">Region</TableHead>
-                  <TableHead className="text-right px-8 font-black uppercase text-xs text-slate-500">Market Class</TableHead>
+                  <TableHead className="px-10 font-black uppercase text-[10px] text-slate-500 tracking-widest">Sovereign</TableHead>
+                  <TableHead className="font-black uppercase text-[10px] text-slate-500 tracking-widest">Region</TableHead>
+                  <TableHead className="text-right px-10 font-black uppercase text-[10px] text-slate-500 tracking-widest">Classification</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {countries.map((country) => (
-                  <TableRow key={country.id} className="hover:bg-slate-50/50 transition-colors">
-                    <TableCell className="px-8 py-5 font-bold text-slate-900">{country.name}</TableCell>
-                    <TableCell className="py-5 text-slate-600 font-medium">{country.region}</TableCell>
-                    <TableCell className="text-right px-8 py-5">
-                      <Badge variant="outline" className="font-black border-2 px-3">{country.incomeGroup}</Badge>
+                {countries.slice(0, 8).map((country) => (
+                  <TableRow key={country.id} className="hover:bg-slate-50/50 transition-colors border-b last:border-0">
+                    <TableCell className="px-10 py-6 font-bold text-slate-900">{country.name}</TableCell>
+                    <TableCell className="py-6 text-slate-600 font-medium">{country.region}</TableCell>
+                    <TableCell className="text-right px-10 py-6">
+                      <Badge variant="outline" className="font-black border-2 px-3 bg-white">{country.incomeGroup}</Badge>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -346,29 +386,32 @@ export default function DashboardPage() {
         </Card>
 
         <Card className="lg:col-span-3 border-2 shadow-sm">
-          <CardHeader className="bg-slate-50/50 border-b py-6 px-8">
+          <CardHeader className="bg-slate-50/50 border-b py-8 px-10">
             <CardTitle className="text-xl font-black text-slate-900">Recent Analytical Feed</CardTitle>
-            <CardDescription className="text-slate-500 font-medium">Latest updates from the analytical and committee team.</CardDescription>
+            <CardDescription className="text-slate-500 font-medium">Latest portfolio risk updates.</CardDescription>
           </CardHeader>
-          <CardContent className="pt-8 px-8 pb-8">
+          <CardContent className="p-8">
             <div className="space-y-4">
               {!isMounted || recentRatings.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 space-y-3 opacity-30">
-                    <Clock className="w-10 h-10" />
-                    <p className="text-xs font-black uppercase tracking-widest">No Recent Activity</p>
+                  <div className="flex flex-col items-center justify-center py-24 space-y-4 opacity-30">
+                    <Clock className="w-12 h-12" />
+                    <p className="text-[10px] font-black uppercase tracking-widest">No Recent Activity</p>
                   </div>
               ) : recentRatings.map((r, i) => (
-                <div key={r.id || i} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 transition-all border-2 border-transparent hover:border-slate-100 group">
+                <div key={r.id || i} className="flex items-center gap-5 p-5 rounded-3xl hover:bg-slate-50 transition-all border-2 border-transparent hover:border-slate-100 group bg-white shadow-sm">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-slate-900 truncate group-hover:text-primary transition-colors">{r.countryName}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5" suppressHydrationWarning>
-                      {r.createdAt?.seconds ? new Date(r.createdAt.seconds * 1000).toLocaleDateString() : 'Real-time update'}
-                    </p>
+                    <p className="text-base font-black text-slate-900 truncate group-hover:text-primary transition-colors">{r.countryName}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Clock className="w-3 h-3 text-slate-400" />
+                      <p className="text-[10px] font-bold text-slate-400 uppercase" suppressHydrationWarning>
+                        {r.createdAt?.seconds ? new Date(r.createdAt.seconds * 1000).toLocaleDateString() : 'Real-time update'}
+                      </p>
+                    </div>
                   </div>
                   <div className="text-right shrink-0">
                     <Badge className={cn(
-                      "font-black text-sm px-3 py-1 shadow-sm",
-                      r.approvalStatus === 'approved' ? "bg-green-600 hover:bg-green-700" : "bg-primary"
+                      "font-black text-sm px-4 py-2 shadow-lg rounded-xl border-b-4",
+                      r.approvalStatus === 'approved' ? "bg-green-600 hover:bg-green-700 border-green-800" : "bg-primary border-primary-foreground/20"
                     )}>
                         {r.overrideRating || r.adjustedRating || r.initialRating}
                     </Badge>

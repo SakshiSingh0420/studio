@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -100,34 +101,29 @@ export default function RatingExecutionPage() {
 
     /**
      * REACTIVE ANALYTICAL CONTEXT
-     * This derived state handles real-time formula recalculation.
+     * This derived state handles real-time formula recalculation when factSheet changes.
      */
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
         const context: Record<string, number> = {}; 
-        const normalize = (str: string) => (str || "").toLowerCase().replace(/[\s-_]/g, "");
+        const normalizeKey = (str: string) => (str || "").toLowerCase().replace(/[\s-_]/g, "");
         
-        // 1. Build a comprehensive context (IDs, Slugs, and Normalized Names)
+        // 1. Build context from raw values
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
             
-            // Map by Technical ID
             context[p.id] = val;
-            
-            // Map by Technical Slug
             if (p.slug) {
                 const slug = p.slug.toLowerCase();
                 context[slug] = val;
-                context[normalize(slug)] = val;
+                context[normalizeKey(slug)] = val;
             }
-
-            // Map by Human Name (Normalized)
             if (p.name) {
                 const name = p.name.toLowerCase();
                 context[name] = val;
-                context[normalize(name)] = val;
+                context[normalizeKey(name)] = val;
             }
         });
         
@@ -140,7 +136,7 @@ export default function RatingExecutionPage() {
             
             let resultValue = 0;
 
-            // Standard macro-fiscal formulas (Fallback to standard names if technical mapping fails)
+            // Logic matching for common sovereign ratios
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || context['total_debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
@@ -158,7 +154,6 @@ export default function RatingExecutionPage() {
             }
 
             results[p.id] = resultValue;
-            // Also add to context so other derived values can use this result
             context[p.id] = resultValue;
             if (p.slug) context[p.slug.toLowerCase()] = resultValue;
         });
@@ -198,12 +193,16 @@ export default function RatingExecutionPage() {
 
             parameters.forEach(p => {
                 if (p.type !== 'raw') return;
+                
                 const slug = (p.slug || "").toLowerCase();
                 const name = (p.name || "").toLowerCase();
-                
-                // Try to find a match in the AI response by slug or name
+                const normalizedSlug = slug.replace(/[\s-_]/g, "");
+                const normalizedName = name.replace(/[\s-_]/g, "");
+
+                // Aggressive matching against AI returned fields
                 const val = (data as any)[slug] ?? 
-                            (data as any)[name] ?? 
+                            (data as any)[normalizedSlug] ?? 
+                            (data as any)[normalizedName] ?? 
                             (data as any)[p.id] ?? 
                             null;
 

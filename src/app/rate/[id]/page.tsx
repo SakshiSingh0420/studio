@@ -222,23 +222,14 @@ export default function RatingExecutionPage() {
         if (!parameters.length) return {};
         
         const context: Record<string, number> = {}; 
-        const normalizeKey = (str: string) => (str || "").toLowerCase().replace(/[\s-_]/g, "");
         
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
             
             context[p.id] = val;
-            if (p.slug) {
-                const slug = p.slug.toLowerCase();
-                context[slug] = val;
-                context[normalizeKey(slug)] = val;
-            }
-            if (p.name) {
-                const name = p.name.toLowerCase();
-                context[name] = val;
-                context[normalizeKey(name)] = val;
-            }
+            if (p.slug) context[p.slug.toLowerCase()] = val;
+            if (p.name) context[p.name.toLowerCase()] = val;
         });
         
         const results: Record<string, number> = {};
@@ -291,7 +282,10 @@ export default function RatingExecutionPage() {
     }
 
     const handleAutoFetch = () => {
-        if (!country || !parameters.length) return;
+        if (!country || !parameters.length) {
+            console.warn("AutoFetch: Missing country or parameters list.");
+            return;
+        }
         
         setIsGenerating(true)
         console.log("Auto Fetch Triggered for country:", country.name);
@@ -308,31 +302,32 @@ export default function RatingExecutionPage() {
             return;
         }
 
-        const filled = new Set<string>();
         const nextFactSheet: FactSheetData = { ...factSheet };
+        const filled = new Set<string>();
 
+        // We use a fuzzy mapping strategy to ensure data patches correctly
         parameters.forEach(p => {
             if (p.type !== 'raw') return;
             
             const slug = (p.slug || "").toLowerCase();
             const name = (p.name || "").toLowerCase();
-            const pid = p.id.toLowerCase();
+            const id = p.id.toLowerCase();
             
-            const normalizedSlug = slug.replace(/[\s-_]/g, "");
-            const normalizedName = name.replace(/[\s-_]/g, "");
-            const normalizedPid = pid.replace(/[\s-_]/g, "");
+            // Search benchmarkData keys for a match
+            const benchMatchKey = Object.keys(benchmarkData).find(k => {
+                const lk = k.toLowerCase();
+                return lk === slug || 
+                       lk === name || 
+                       lk === id || 
+                       lk === slug.replace(/_/g, " ") ||
+                       slug.includes(lk);
+            });
 
-            // Robust multi-path matching against benchmark data keys
-            const val = (benchmarkData as any)[slug] ?? 
-                        (benchmarkData as any)[pid] ??
-                        (benchmarkData as any)[normalizedSlug] ?? 
-                        (benchmarkData as any)[normalizedPid] ??
-                        (benchmarkData as any)[normalizedName] ?? 
-                        null;
-
-            if (val !== undefined && val !== null) {
+            if (benchMatchKey) {
+                const val = (benchmarkData as any)[benchMatchKey];
                 nextFactSheet[p.id] = val;
                 filled.add(p.id);
+                console.log(`AutoFetch: Mapped benchmark [${benchMatchKey}] to parameter [${p.name}] value: ${val}`);
             }
         });
 
@@ -341,7 +336,6 @@ export default function RatingExecutionPage() {
         setIsGenerating(false);
         
         toast({ title: "Sovereign Benchmarks Loaded", description: `Analytical profile for ${country.name} synchronized.` });
-        console.log("FactSheet Updated:", nextFactSheet);
     }
 
     useEffect(() => {

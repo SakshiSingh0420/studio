@@ -58,18 +58,17 @@ export default function CountriesPage() {
   const db = useFirestore();
   const { toast } = useToast();
   
-  // Explicitly fetch ALL countries without filters
+  // UNFILTERED QUERY: Fetches ALL countries from the master collection
   const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
   const { data: dbCountries, isLoading } = useCollection<Country>(countriesQuery);
 
   const [search, setSearch] = useState("")
   const [isAdding, setIsAdding] = useState(false)
-  const [isMounted, setIsMounted] = useState(false)
   const [newCountry, setNewCountry] = useState<Partial<Country>>({
     name: "",
     region: "",
     incomeGroup: "Emerging",
-    currency: "INR",
+    currency: "INR", // Defaulted to INR
     population: 0,
     nominalGdp: 0,
     gdpPerCapita: 0,
@@ -84,18 +83,9 @@ export default function CountriesPage() {
     gdpSnapshot: 0
   })
 
-  useEffect(() => {
-    setIsMounted(true);
-    setNewCountry(prev => ({
-      ...prev,
-      dataYear: new Date().getFullYear(),
-      year: new Date().getFullYear(),
-      scenarioName: `Base Case ${new Date().getFullYear()}`
-    }));
-  }, []);
-
+  // Merge DB countries with Demo countries, ensuring India is INR
   const countries = (dbCountries && dbCountries.length > 0) 
-    ? dbCountries 
+    ? dbCountries.map(c => c.name === "India" ? { ...c, currency: "INR" } : c)
     : [...(dbCountries || []), ...DEMO_COUNTRIES.filter(d => !(dbCountries || []).some(c => c.name === d.name))];
 
   const handleAdd = async () => {

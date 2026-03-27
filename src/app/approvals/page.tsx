@@ -1,7 +1,8 @@
+
 "use client"
 
 import { useState, useEffect } from "react"
-import { getCountries, getRatingHistory, updateRatingStatus, Rating, Country } from "@/lib/store"
+import { getCountries, updateRatingStatus, Rating, Country } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -9,22 +10,65 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { CheckCircle, XCircle, Eye, ShieldAlert } from "lucide-react"
+import { CheckCircle, XCircle, Eye, ShieldAlert, Loader2 } from "lucide-react"
+import { collection, getDocs, query, where } from "firebase/firestore"
+import { useFirestore } from "@/firebase"
+
+const DEMO_COUNTRIES: Partial<Country>[] = [
+  { id: 'demo-in', name: "India", region: "Asia" },
+  { id: 'demo-us', name: "United States", region: "North America" },
+  { id: 'demo-cn', name: "China", region: "Asia" },
+  { id: 'demo-de', name: "Germany", region: "Europe" },
+  { id: 'demo-br', name: "Brazil", region: "South America" },
+  { id: 'demo-za', name: "South Africa", region: "Africa" },
+];
 
 export default function ApprovalsPage() {
   const [pending, setPending] = useState<(Rating & { countryName: string })[]>([])
   const [selectedRating, setSelectedRating] = useState<any>(null)
   const [reason, setReason] = useState("")
+  const [loading, setLoading] = useState(true)
   const { toast } = useToast()
+  const db = useFirestore()
 
   async function load() {
-    const countries = await getCountries()
-    const all: any[] = []
-    for (const c of countries) {
-      const history = await getRatingHistory(c.id)
-      all.push(...history.filter(r => r.approvalStatus === 'pending').map(r => ({ ...r, countryName: c.name })))
+    setLoading(true)
+    try {
+      // 1. Fetch all countries (DB)
+      const dbCountries = await getCountries()
+      
+      // 2. Merge with Demo Countries for lookup
+      const allSovereigns = [
+        ...dbCountries,
+        ...DEMO_COUNTRIES.filter(d => !dbCountries.some(c => c.name === d.name))
+      ]
+
+      // 3. Query ALL ratings with pending status directly
+      const q = query(collection(db, 'ratings'), where('approvalStatus', '==', 'pending'))
+      const snap = await getDocs(q)
+      
+      const results = snap.docs.map(doc => {
+        const data = doc.data() as Rating
+        const country = allSovereigns.find(c => c.id === data.countryId)
+        return {
+          ...data,
+          id: doc.id,
+          countryName: country?.name || 'Unknown Sovereign'
+        }
+      })
+
+      // Sort by creation date
+      setPending(results.sort((a, b) => {
+        const dateA = a.createdAt?.toDate?.() || new Date(0)
+        const dateB = b.createdAt?.toDate?.() || new Date(0)
+        return dateB.getTime() - dateA.getTime()
+      }))
+    } catch (error) {
+      console.error("Failed to load approvals:", error)
+      toast({ variant: "destructive", title: "Sync Error", description: "Could not retrieve the committee queue." })
+    } finally {
+      setLoading(false)
     }
-    setPending(all)
   }
 
   useEffect(() => {
@@ -33,11 +77,23 @@ export default function ApprovalsPage() {
 
   const handleAction = async (status: 'approved' | 'rejected') => {
     if (!selectedRating) return
-    await updateRatingStatus(selectedRating.id, status, undefined, reason)
-    toast({ title: `Rating ${status.toUpperCase()}`, description: `Action successful for ${selectedRating.countryName}` })
-    setSelectedRating(null)
-    setReason("")
-    load()
+    try {
+      await updateRatingStatus(selectedRating.id, status, undefined, reason)
+      toast({ title: `Rating ${status.toUpperCase()}`, description: `Action successful for ${selectedRating.countryName}` })
+      setSelectedRating(null)
+      setReason("")
+      load()
+    } catch (e) {
+      toast({ variant: "destructive", title: "Action Failed", description: "Could not update the rating status." })
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-[80vh] items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (

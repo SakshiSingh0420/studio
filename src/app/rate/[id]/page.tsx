@@ -44,7 +44,7 @@ const DEMO_COUNTRIES: Partial<Country>[] = [
 
 const STATIC_DATASETS: Record<string, Record<string, number>> = {
   "India": {
-    gdp: 3400,
+    gdp_nominal: 3400,
     government_debt: 3000,
     government_revenue: 700,
     fx_reserves: 600,
@@ -63,7 +63,7 @@ const STATIC_DATASETS: Record<string, Record<string, number>> = {
     gdp_per_capita: 2400
   },
   "United States": {
-    gdp: 26000,
+    gdp_nominal: 26000,
     government_debt: 34000,
     government_revenue: 8000,
     fx_reserves: 250,
@@ -82,7 +82,7 @@ const STATIC_DATASETS: Record<string, Record<string, number>> = {
     gdp_per_capita: 65000
   },
   "China": {
-    gdp: 18000,
+    gdp_nominal: 18000,
     government_debt: 14000,
     government_revenue: 5000,
     fx_reserves: 3200,
@@ -101,7 +101,7 @@ const STATIC_DATASETS: Record<string, Record<string, number>> = {
     gdp_per_capita: 12000
   },
   "Germany": {
-    gdp: 4500,
+    gdp_nominal: 4500,
     government_debt: 3000,
     government_revenue: 1500,
     fx_reserves: 300,
@@ -120,7 +120,7 @@ const STATIC_DATASETS: Record<string, Record<string, number>> = {
     gdp_per_capita: 50000
   },
   "Brazil": {
-    gdp: 2100,
+    gdp_nominal: 2100,
     government_debt: 1600,
     government_revenue: 600,
     fx_reserves: 350,
@@ -139,7 +139,7 @@ const STATIC_DATASETS: Record<string, Record<string, number>> = {
     gdp_per_capita: 9000
   },
   "South Africa": {
-    gdp: 400,
+    gdp_nominal: 400,
     government_debt: 300,
     government_revenue: 120,
     fx_reserves: 60,
@@ -271,7 +271,7 @@ export default function RatingExecutionPage() {
 
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || context['total_debt'] || context['governmentdebt'] || 0;
-                const gdp = context['gdp'] || context['nominal_gdp'] || 1;
+                const gdp = context['gdp_nominal'] || context['gdp'] || context['nominal_gdp'] || 1;
                 resultValue = (debt / (gdp || 1)) * 100;
             } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
                 const res = context['fx_reserves'] || context['reserves'] || context['fxreserves'] || 0;
@@ -328,19 +328,12 @@ export default function RatingExecutionPage() {
     
         setIsGenerating(true);
     
-        // 🔹 Normalize helper
-        const normalize = (str: string) =>
-            str.toLowerCase().replace(/[\s_]+/g, "").trim();
-    
         // 🔹 Robust country matching
         const countryKey = Object.keys(STATIC_DATASETS).find(
-            key => normalize(key) === normalize(country.name)
+            key => key.toLowerCase() === country.name.toLowerCase()
         );
     
         const benchmarkData = countryKey ? STATIC_DATASETS[countryKey] : null;
-    
-        console.log("Auto Fetch Country:", country.name);
-        console.log("Matched Benchmark Key:", countryKey);
     
         if (!benchmarkData) {
             toast({
@@ -352,38 +345,32 @@ export default function RatingExecutionPage() {
             return;
         }
     
+        // 1. BUILD NEW OBJECT CLEANLY (No mutation)
         const nextFactSheet: FactSheetData = {};
         const filled = new Set<string>();
     
         parameters.forEach(p => {
             if ((p.type || "").toLowerCase() !== "raw") return;
     
-            const slug = normalize(p.slug || "");
-            const name = normalize(p.name || "");
-            const id = normalize(p.id || "");
+            const slug = (p.slug || "").toLowerCase();
+            const name = (p.name || "").toLowerCase();
+            const id = p.id.toLowerCase();
     
+            // 4. EXACT MAPPING ONLY (No complex partial matching)
             const benchMatchKey = Object.keys(benchmarkData).find(k => {
-                const lk = normalize(k);
+                const lk = k.toLowerCase();
                 return lk === slug || lk === name || lk === id;
             });
     
             if (benchMatchKey) {
-                const val = benchmarkData[benchMatchKey];
-                nextFactSheet[p.id] = val;
+                nextFactSheet[p.id] = benchmarkData[benchMatchKey];
                 filled.add(p.id);
             }
         });
     
-        if (Object.keys(nextFactSheet).length === 0) {
-            toast({
-                variant: "destructive",
-                title: "Mapping Failed",
-                description: "No fields could be auto-filled. Check parameter mapping."
-            });
-            setIsGenerating(false);
-            return;
-        }
+        console.log("FINAL FACTSHEET:", nextFactSheet); // 5. ADD DEBUG
     
+        // 3. FORCE NEW STATE OBJECT (Ensures React detects the change)
         setFactSheet({ ...nextFactSheet });
         setAutoFilledFields(filled);
         setIsGenerating(false);

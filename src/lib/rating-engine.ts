@@ -1,3 +1,4 @@
+
 'use client';
 
 export type Parameter = {
@@ -139,7 +140,7 @@ export function runDynamicRating(
     // Check standard formulas if explicitly named/slugged
     if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
       const debt = context['government_debt'] || context['debt'] || context['total_debt'] || 0;
-      const gdp = context['gdp'] || context['nominal_gdp'] || 1;
+      const gdp = context['gdp_nominal'] || context['gdp'] || context['nominal_gdp'] || 1;
       derivedVal = gdp ? (debt / gdp) * 100 : 0;
     } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
       const res = context['fx_reserves'] || context['reserves'] || 0;

@@ -283,13 +283,9 @@ export default function RatingExecutionPage() {
     }
 
     const handleAutoFetch = () => {
-        if (!country || !parameters.length) {
-            console.warn("AutoFetch: Missing country or parameters list.");
-            return;
-        }
+        if (!country || !parameters.length) return;
         
         setIsGenerating(true)
-        console.log("Auto Fetch Triggered for country:", country.name);
         
         // Find dataset using case-insensitive lookup
         const countryKey = Object.keys(STATIC_DATASETS).find(
@@ -303,10 +299,9 @@ export default function RatingExecutionPage() {
             return;
         }
 
-        const nextFactSheet: FactSheetData = { ...factSheet };
+        const nextFactSheet: FactSheetData = {};
         const filled = new Set<string>();
 
-        // We use a robust mapping strategy to ensure data patches correctly
         parameters.forEach(p => {
             if (p.type !== 'raw') return;
             
@@ -314,26 +309,21 @@ export default function RatingExecutionPage() {
             const name = (p.name || "").toLowerCase();
             const id = p.id.toLowerCase();
             
-            // Search benchmarkData keys for a match
+            // Exact matching strategy to ensure data patches correctly
             const benchMatchKey = Object.keys(benchmarkData).find(k => {
                 const lk = k.toLowerCase();
-                return lk === slug || 
-                       lk === name || 
-                       lk === id || 
-                       lk === slug.replace(/_/g, " ") ||
-                       slug.includes(lk) ||
-                       lk.includes(slug);
+                return lk === slug || lk === name || lk === id;
             });
 
             if (benchMatchKey) {
                 const val = (benchmarkData as any)[benchMatchKey];
                 nextFactSheet[p.id] = val;
                 filled.add(p.id);
-                console.log(`AutoFetch: Patched [${benchMatchKey}] -> [${p.name}] with value: ${val}`);
             }
         });
 
-        setFactSheet(nextFactSheet);
+        console.log("FINAL FACTSHEET:", nextFactSheet);
+        setFactSheet({ ...nextFactSheet });
         setAutoFilledFields(filled);
         setIsGenerating(false);
         

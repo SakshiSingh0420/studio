@@ -1,4 +1,3 @@
-
 'use client';
 
 export type Parameter = {
@@ -57,17 +56,21 @@ export function evaluateFormula(formula: string, context: Record<string, number>
     if (!formula) return 0;
 
     let expression = formula.toLowerCase();
-    // Sort keys by length descending to prevent partial matches
+    
+    // Sort keys by length descending to prevent partial matches (e.g., 'debt' and 'total_debt')
     const sortedKeys = Object.keys(context).sort((a, b) => b.length - a.length);
     
     for (const key of sortedKeys) {
       const val = context[key] ?? 0;
-      const regex = new RegExp(`\\b${key}\\b`, 'g');
+      // Use word boundaries to match exactly the variable name
+      const regex = new RegExp(`\\b${key.toLowerCase()}\\b`, 'g');
       expression = expression.replace(regex, val.toString());
     }
 
-    const remainingAlpha = expression.replace(/[0-9.+\-*/()\s]/g, '');
+    // Safety check: ensure only numbers and operators remain
+    const remainingAlpha = expression.replace(/[0-9.+\-*/()\s\.]/g, '');
     if (/[a-z]/i.test(remainingAlpha)) {
+      // If we still have letters, it means a variable wasn't replaced
       return 0;
     }
 
@@ -101,18 +104,24 @@ export function runDynamicRating(
 
   // 2. Initial Context Population (Raw Values)
   parameters.forEach(p => {
-    const val = (valuesById[p.id] !== undefined && valuesById[p.id] !== null && valuesById[p.id] !== "") ? Number(valuesById[p.id]) : 0;
+    const rawValue = valuesById[p.id];
+    const val = (rawValue !== undefined && rawValue !== null && rawValue !== "") ? Number(rawValue) : 0;
+    
+    // Map by ID
     context[p.id] = val;
+    // Map by normalized ID
     context[normalize(p.id)] = val;
+    
+    // Map by Slug
     if (p.slug) {
-        const normSlug = normalize(p.slug);
-        context[normSlug] = val;
         context[p.slug.toLowerCase()] = val;
+        context[normalize(p.slug)] = val;
     }
+    
+    // Map by Name
     if (p.name) {
-        const normName = normalize(p.name);
-        context[normName] = val;
         context[p.name.toLowerCase()] = val;
+        context[normalize(p.name)] = val;
     }
     
     if (p.type === "raw") {
@@ -120,56 +129,36 @@ export function runDynamicRating(
     }
   });
 
-  function getVal(keys: string[]) {
-    for (const key of keys) {
-      if (context[key] !== undefined) return context[key];
-      const k = normalize(key);
-      if (context[k] !== undefined) return context[k];
-    }
-    return 0;
-  }
-
-  const debtToGDP = (() => {
-    const debt = getVal(["government_debt", "debt", "total_debt"]);
-    const gdp = getVal(["gdp", "nominal_gdp"]);
-    return gdp ? (debt / gdp) * 100 : 0;
-  })();
-
-  const reserveCover = (() => {
-    const res = getVal(["fx_reserves", "reserves"]);
-    const imp = getVal(["imports"]);
-    return imp ? res / imp : 0;
-  })();
-
-  const interestToRevenue = (() => {
-    const int = getVal(["interest_payments", "interest"]);
-    const rev = getVal(["government_revenue", "revenue"]);
-    return rev ? (int / rev) * 100 : 0;
-  })();
-
-  parameters.forEach(p => {
+  // 3. Resolve Derived Metrics for the calculation run
+  parameters.filter(p => p.type === 'derived').forEach(p => {
     const slug = (p.slug || "").toLowerCase();
     const name = (p.name || "").toLowerCase();
     
+    let derivedVal = 0;
+    
+    // Check standard formulas if explicitly named/slugged
     if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
-      actualValuesUsed[p.id] = debtToGDP;
-      context[normalize(p.id)] = debtToGDP;
-      context[normalize(p.slug)] = debtToGDP;
+      const debt = context['government_debt'] || context['debt'] || context['total_debt'] || 0;
+      const gdp = context['gdp'] || context['nominal_gdp'] || 1;
+      derivedVal = gdp ? (debt / gdp) * 100 : 0;
     } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
-      actualValuesUsed[p.id] = reserveCover;
-      context[normalize(p.id)] = reserveCover;
-      context[normalize(p.slug)] = reserveCover;
+      const res = context['fx_reserves'] || context['reserves'] || 0;
+      const imp = context['imports'] || 1;
+      derivedVal = imp ? res / imp : 0;
     } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
-      actualValuesUsed[p.id] = interestToRevenue;
-      context[normalize(p.id)] = interestToRevenue;
-      context[normalize(p.slug)] = interestToRevenue;
-    } else if (p.type === 'derived' && p.formula) {
-        const val = evaluateFormula(p.formula, context);
-        actualValuesUsed[p.id] = val;
-        context[normalize(p.id)] = val;
+      const int = context['interest_payments'] || context['interest'] || 0;
+      const rev = context['government_revenue'] || context['revenue'] || 1;
+      derivedVal = rev ? (int / rev) * 100 : 0;
+    } else if (p.formula) {
+      derivedVal = evaluateFormula(p.formula, context);
     }
+    
+    actualValuesUsed[p.id] = derivedVal;
+    context[p.id] = derivedVal;
+    if (p.slug) context[p.slug.toLowerCase()] = derivedVal;
   });
 
+  // 4. Transform Values to 1-5 Scores and Apply Weights
   function calculateScore(value: number, thresholds: number[], inverse = false) {
     if (!thresholds || thresholds.length !== 4) return 1;
     const [t2, t3, t4, t5] = thresholds.map(t => Number(t));

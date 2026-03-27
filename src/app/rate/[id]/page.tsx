@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -99,20 +98,36 @@ export default function RatingExecutionPage() {
         load()
     }, [id, searchParams])
 
-    // AUTOMATIC DERIVED CALCULATIONS:
-    // This hook ensures that Live Analytical Ratios are calculated automatically on load and field changes.
+    /**
+     * REACTIVE ANALYTICAL CONTEXT
+     * This derived state handles real-time formula recalculation.
+     */
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
         
         const context: Record<string, number> = {}; 
+        const normalize = (str: string) => (str || "").toLowerCase().replace(/[\s-_]/g, "");
         
-        // 1. Build a comprehensive context (IDs and Slugs)
+        // 1. Build a comprehensive context (IDs, Slugs, and Normalized Names)
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
+            
+            // Map by Technical ID
             context[p.id] = val;
+            
+            // Map by Technical Slug
             if (p.slug) {
-                context[p.slug.toLowerCase()] = val;
+                const slug = p.slug.toLowerCase();
+                context[slug] = val;
+                context[normalize(slug)] = val;
+            }
+
+            // Map by Human Name (Normalized)
+            if (p.name) {
+                const name = p.name.toLowerCase();
+                context[name] = val;
+                context[normalize(name)] = val;
             }
         });
         
@@ -123,22 +138,29 @@ export default function RatingExecutionPage() {
             const slug = (p.slug || "").toLowerCase();
             const name = (p.name || "").toLowerCase();
             
-            // Standard macro-fiscal formulas
+            let resultValue = 0;
+
+            // Standard macro-fiscal formulas (Fallback to standard names if technical mapping fails)
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
-                const debt = context['government_debt'] || context['debt'] || 0;
-                const gdp = context['gdp'] || 1;
-                results[p.id] = (debt / gdp) * 100;
+                const debt = context['government_debt'] || context['debt'] || context['total_debt'] || 0;
+                const gdp = context['gdp'] || context['nominal_gdp'] || 1;
+                resultValue = (debt / gdp) * 100;
             } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
-                const res = context['fx_reserves'] || 0;
+                const res = context['fx_reserves'] || context['reserves'] || 0;
                 const imp = context['imports'] || 1;
-                results[p.id] = res / imp;
+                resultValue = res / imp;
             } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
                 const int = context['interest_payments'] || context['interest'] || 0;
                 const rev = context['government_revenue'] || context['revenue'] || 1;
-                results[p.id] = (int / rev) * 100;
+                resultValue = (int / rev) * 100;
             } else if (p.formula) {
-                results[p.id] = evaluateFormula(p.formula, context);
+                resultValue = evaluateFormula(p.formula, context);
             }
+
+            results[p.id] = resultValue;
+            // Also add to context so other derived values can use this result
+            context[p.id] = resultValue;
+            if (p.slug) context[p.slug.toLowerCase()] = resultValue;
         });
         
         return results;
@@ -177,7 +199,14 @@ export default function RatingExecutionPage() {
             parameters.forEach(p => {
                 if (p.type !== 'raw') return;
                 const slug = (p.slug || "").toLowerCase();
-                const val = (data as any)[slug] || (data as any)[p.id];
+                const name = (p.name || "").toLowerCase();
+                
+                // Try to find a match in the AI response by slug or name
+                const val = (data as any)[slug] ?? 
+                            (data as any)[name] ?? 
+                            (data as any)[p.id] ?? 
+                            null;
+
                 if (val !== undefined && val !== null) {
                     nextFactSheet[p.id] = val;
                     filled.add(p.id);
@@ -186,7 +215,7 @@ export default function RatingExecutionPage() {
 
             setFactSheet(nextFactSheet);
             setAutoFilledFields(filled);
-            toast({ title: "AI Data Retrieved", description: `Financial benchmarks for ${country.name} synchronized in ${country.currency}.` });
+            toast({ title: "AI Data Retrieved", description: `Analytical benchmarks for ${country.name} synchronized.` });
         } catch (error) {
             console.error("AI Fetch Error:", error);
             toast({ variant: "destructive", title: "Fetch Failed", description: "Could not retrieve analytical benchmarks." });

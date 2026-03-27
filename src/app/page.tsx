@@ -1,13 +1,15 @@
+
 "use client"
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown } from "lucide-react"
+import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Plus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useCollection, useMemoFirebase, useFirestore } from "@/firebase"
 import { collection, query, orderBy, limit } from "firebase/firestore"
 import { Country, Rating } from "@/lib/store"
+import Link from "next/link"
 import { 
   LineChart, 
   Line, 
@@ -141,6 +143,11 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-black tracking-tighter text-slate-900">Sovereign Analytics Dashboard</h1>
           <p className="text-muted-foreground mt-1 text-lg">Real-time overview of global credit ratings and risk profiles.</p>
         </div>
+        <Button asChild className="bg-primary hover:bg-primary/90 font-bold shadow-md h-12 px-8 rounded-2xl">
+          <Link href="/countries#search">
+            <Plus className="w-5 h-5 mr-2" /> Start New Rating
+          </Link>
+        </Button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

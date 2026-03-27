@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Plus, Search, MapPin, Loader2, Globe, Trash2, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -58,6 +58,7 @@ const DEMO_COUNTRIES: Partial<Country>[] = [
 export default function CountriesPage() {
   const db = useFirestore();
   const { toast } = useToast();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   
   // UNFILTERED QUERY: Fetches ALL countries from the master collection
   const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
@@ -144,6 +145,12 @@ export default function CountriesPage() {
     c.region.toLowerCase().includes(search.toLowerCase())
   )
 
+  useEffect(() => {
+    if (window.location.hash === "#search") {
+      searchInputRef.current?.focus();
+    }
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex h-[80vh] items-center justify-center">
@@ -224,6 +231,7 @@ export default function CountriesPage() {
         <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input 
+                ref={searchInputRef}
                 className="pl-10 h-11 border-2" 
                 placeholder="Search sovereigns..." 
                 value={search}

@@ -57,6 +57,8 @@ const DEMO_COUNTRIES: Partial<Country>[] = [
 export default function CountriesPage() {
   const db = useFirestore();
   const { toast } = useToast();
+  
+  // Explicitly fetch ALL countries without filters
   const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
   const { data: dbCountries, isLoading } = useCollection<Country>(countriesQuery);
 

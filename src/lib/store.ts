@@ -102,7 +102,7 @@ export interface Country {
   gdpPerCapita: number;
   inflation: number;
   dataYear: number;
-  year?: number; // Added for explicit year tracking
+  year?: number; 
   primaryDataSource: string;
   equityIndex?: string;
   bondYield10Y?: number;
@@ -111,6 +111,7 @@ export interface Country {
   lastUpdated?: Timestamp;
   gdpSnapshot?: number;
 }
+
 export const getCountries = () => getAll<Country>('countries');
 export const addCountry = (c: any) => addDoc(collection(db, 'countries'), {
   ...c,
@@ -124,7 +125,7 @@ export interface Rating {
   countryId: string;
   modelId: string;
   scaleId: string;
-  year: number; // Added tracking year
+  year: number; 
   finalScore: number;
   initialRating: string;
   adjustedRating?: string;
@@ -161,15 +162,25 @@ export const updateRatingStatus = async (id: string, status: 'approved' | 'rejec
 };
 
 /**
- * Resets all rating data for the prototype demo.
+ * Resets ONLY rating execution data.
+ * Does NOT touch master data (countries, parameters, models, scales).
  */
 export const resetAllRatings = async () => {
-  const snap = await getDocs(collection(db, 'ratings'));
-  const batch = writeBatch(db);
-  snap.docs.forEach(d => {
-    batch.delete(d.ref);
-  });
-  await batch.commit();
+  const collectionsToClear = ['ratings', 'ratingExecutions', 'ratingResults'];
+  for (const collName of collectionsToClear) {
+    try {
+      const snap = await getDocs(collection(db, collName));
+      if (snap.empty) continue;
+      
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => {
+        batch.delete(d.ref);
+      });
+      await batch.commit();
+    } catch (e) {
+      console.warn(`Could not clear collection ${collName}:`, e);
+    }
+  }
 };
 
 // FACT SHEETS

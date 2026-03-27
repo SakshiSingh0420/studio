@@ -49,6 +49,7 @@ export default function RatingsHistoryPage() {
     try {
       await resetAllRatings();
       toast({ title: "Data Reset Complete", description: "All historical rating sessions have been cleared." });
+      // Force refresh by re-loading state
       load();
     } catch (e) {
       toast({ title: "Reset Failed", variant: "destructive" });

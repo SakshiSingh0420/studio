@@ -48,10 +48,11 @@ import { useToast } from "@/hooks/use-toast"
 
 const DEMO_COUNTRIES: Partial<Country>[] = [
   { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR", gdpSnapshot: 3400, year: 2025 },
-  { id: 'demo-us', name: "USA", region: "North America", incomeGroup: "Advanced", currency: "USD", gdpSnapshot: 25000, year: 2025 },
-  { id: 'demo-cn', name: "China", region: "East Asia", incomeGroup: "Emerging", currency: "CNY", gdpSnapshot: 18000, year: 2025 },
-  { id: 'demo-de', name: "Germany", region: "Western Europe", incomeGroup: "Advanced", currency: "EUR", gdpSnapshot: 4000, year: 2025 },
-  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL", gdpSnapshot: 1600, year: 2025 },
+  { id: 'demo-us', name: "United States", region: "North America", incomeGroup: "Advanced", currency: "USD", gdpSnapshot: 26000, year: 2026 },
+  { id: 'demo-cn', name: "China", region: "Asia", incomeGroup: "Emerging", currency: "CNY", gdpSnapshot: 18000, year: 2026 },
+  { id: 'demo-de', name: "Germany", region: "Europe", incomeGroup: "Advanced", currency: "EUR", gdpSnapshot: 4500, year: 2026 },
+  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL", gdpSnapshot: 2100, year: 2026 },
+  { id: 'demo-za', name: "South Africa", region: "Africa", incomeGroup: "Emerging", currency: "ZAR", gdpSnapshot: 400, year: 2026 },
 ];
 
 export default function CountriesPage() {
@@ -83,10 +84,11 @@ export default function CountriesPage() {
     gdpSnapshot: 0
   })
 
-  // Merge DB countries with Demo countries, ensuring India is INR
-  const countries = (dbCountries && dbCountries.length > 0) 
-    ? dbCountries.map(c => c.name === "India" ? { ...c, currency: "INR" } : c)
-    : [...(dbCountries || []), ...DEMO_COUNTRIES.filter(d => !(dbCountries || []).some(c => c.name === d.name))];
+  // Merge DB countries with Demo countries, ensuring India is INR and preventing duplicates
+  const countries = [
+    ...(dbCountries || []),
+    ...DEMO_COUNTRIES.filter(d => !(dbCountries || []).some(c => c.name.toLowerCase() === d.name?.toLowerCase()))
+  ].map(c => c.name === "India" ? { ...c, currency: "INR" } : c);
 
   const handleAdd = async () => {
     if (!newCountry.name || !newCountry.region || !newCountry.year) return;

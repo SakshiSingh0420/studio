@@ -481,6 +481,18 @@ export default function RatingExecutionPage() {
                             <CardTitle className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Session Details</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-6 pt-6">
+                            <div className="space-y-4 pb-6 border-b border-dashed">
+                                <p className="text-[10px] font-black uppercase text-primary tracking-widest">Country</p>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Name</label>
+                                    <p className="font-black text-slate-900">{country?.name}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Region</label>
+                                    <p className="font-black text-slate-900">{country?.region}</p>
+                                </div>
+                            </div>
+                            
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Analytical Model</label>
                                 <p className="font-black text-slate-900">{selectedModel?.name}</p>

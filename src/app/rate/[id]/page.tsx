@@ -165,6 +165,7 @@ export default function RatingExecutionPage() {
     const searchParams = useSearchParams()
     const { toast } = useToast()
     
+    // Robust ID extraction for App Router
     const rawId = params?.id
     const id = useMemo(() => {
         if (!rawId) return null;
@@ -332,27 +333,50 @@ export default function RatingExecutionPage() {
             return;
         }
 
-        // INTRODUCE EXPLICIT FIELD MAPPING
+        // UPDATED FIELD_MAP with alternate keys for robust identifier matching
         const FIELD_MAP: Record<string, string> = {
-            gdp: "gdp_nominal",
-            government_debt: "government_debt",
-            debt: "government_debt",
-            government_revenue: "government_revenue",
-            revenue: "government_revenue",
-            fx_reserves: "fx_reserves",
-            imports: "imports",
-            exports: "exports",
-            inflation: "inflation",
-            inflation_volatility: "inflation_volatility",
-            gdp_growth: "gdp_growth",
-            fiscal_balance: "fiscal_balance",
-            interest_payments: "interest_payments",
-            governance_score: "governance_score",
-            political_stability: "political_stability",
-            social_risk: "social_risk",
-            climate_risk: "climate_risk",
-            exchange_rate_volatility: "exchange_rate_volatility",
-            gdp_per_capita: "gdp_per_capita"
+          // GDP
+          gdp: "gdp_nominal",
+          gdp_nominal: "gdp_nominal",
+          nominal_gdp: "gdp_nominal",
+
+          // Debt
+          government_debt: "government_debt",
+          debt: "government_debt",
+          total_debt: "government_debt",
+          gov_debt: "government_debt",
+
+          // Revenue
+          government_revenue: "government_revenue",
+          revenue: "government_revenue",
+          gov_revenue: "government_revenue",
+
+          // Reserves
+          fx_reserves: "fx_reserves",
+          reserves: "fx_reserves",
+          foreign_reserves: "fx_reserves",
+
+          // Interest
+          interest_payments: "interest_payments",
+          interest: "interest_payments",
+          interest_to_revenue: "interest_payments",
+
+          // Growth
+          gdp_growth: "gdp_growth",
+          growth: "gdp_growth",
+
+          // Others
+          imports: "imports",
+          exports: "exports",
+          inflation: "inflation",
+          inflation_volatility: "inflation_volatility",
+          fiscal_balance: "fiscal_balance",
+          governance_score: "governance_score",
+          political_stability: "political_stability",
+          social_risk: "social_risk",
+          climate_risk: "climate_risk",
+          exchange_rate_volatility: "exchange_rate_volatility",
+          gdp_per_capita: "gdp_per_capita"
         };
     
         const nextFactSheet: FactSheetData = {};
@@ -365,7 +389,7 @@ export default function RatingExecutionPage() {
             const name = (p.name || "").toLowerCase();
             const id = p.id.toLowerCase();
     
-            // STRICT EXPLICIT MAPPING
+            // STRICT EXPLICIT MAPPING using aliases
             const key =
               FIELD_MAP[slug] ||
               FIELD_MAP[name] ||
@@ -375,11 +399,12 @@ export default function RatingExecutionPage() {
               nextFactSheet[p.id] = benchmarkData[key];
               filled.add(p.id);
               
-              console.log("AUTO FETCH MAPPING", {
-                param: p.id,
+              console.log("MAPPING CHECK", {
+                paramId: p.id,
                 slug,
+                name,
                 mappedKey: key,
-                value: benchmarkData[key]
+                value: key ? benchmarkData[key] : undefined
               });
             }
         });

@@ -9,15 +9,30 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Loader2, Globe, ShieldCheck, ArrowRight, Settings2, Star, CheckCircle2, AlertCircle, Info, Calendar } from "lucide-react"
+import { Loader2, Globe, ShieldCheck, ArrowRight, Settings2, Star, Info, Calendar } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
+const DEMO_COUNTRIES: Partial<Country>[] = [
+  { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR", gdpSnapshot: 3400, year: 2025 },
+  { id: 'demo-us', name: "United States", region: "North America", incomeGroup: "Advanced", currency: "USD", gdpSnapshot: 26000, year: 2026 },
+  { id: 'demo-cn', name: "China", region: "Asia", incomeGroup: "Emerging", currency: "CNY", gdpSnapshot: 18000, year: 2026 },
+  { id: 'demo-de', name: "Germany", region: "Europe", incomeGroup: "Advanced", currency: "EUR", gdpSnapshot: 4500, year: 2026 },
+  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL", gdpSnapshot: 2100, year: 2026 },
+  { id: 'demo-za', name: "South Africa", region: "Africa", incomeGroup: "Emerging", currency: "ZAR", gdpSnapshot: 400, year: 2026 },
+];
+
 export default function RatingInitiationPage() {
-    const { id } = useParams()
+    const params = useParams()
     const router = useRouter()
     
+    // Robust ID extraction
+    const rawId = params?.id
+    const id = useMemo(() => {
+        if (!rawId) return null;
+        return Array.isArray(rawId) ? rawId[0] : rawId;
+    }, [rawId]);
+
     const [country, setCountry] = useState<Country | null>(null)
     const [models, setModels] = useState<RatingModel[]>([])
     const [scales, setScales] = useState<RatingScale[]>([])
@@ -59,17 +74,30 @@ export default function RatingInitiationPage() {
 
     useEffect(() => {
         async function load() {
+            if (!id) return;
+            console.log("Initializing Rating for ID:", id);
+            
             try {
-                const [countriesData, activeModels, scalesData] = await Promise.all([
+                const [dbCountries, activeModels, scalesData] = await Promise.all([
                     getCountries(),
                     getActiveModels(),
                     getScales()
                 ])
                 
-                const found = countriesData.find(c => c.id === id)
+                // Merge demo countries with DB results to ensure 'demo-us' etc. are found
+                const allCountries = [
+                    ...dbCountries,
+                    ...DEMO_COUNTRIES.filter(d => !dbCountries.some(c => c.name.toLowerCase() === d.name?.toLowerCase()))
+                ] as Country[];
+
+                const found = allCountries.find(c => String(c.id) === String(id));
+                
                 if (found) {
+                    console.log("Country Found:", found.name);
                     setCountry(found)
                     setTargetYear(found.year || found.dataYear || 2025)
+                } else {
+                    console.warn("Country NOT Found for ID:", id);
                 }
                 
                 setModels(activeModels)
@@ -91,11 +119,19 @@ export default function RatingInitiationPage() {
     }, [id])
 
     const handleInitialize = () => {
-        if (!selectedModelId || !selectedScaleId) return
+        if (!selectedModelId || !selectedScaleId || !id) return
         router.push(`/rate/${id}?model=${selectedModelId}&scale=${selectedScaleId}&year=${targetYear}`)
     }
 
     if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin w-8 h-8 text-primary" /></div>
+
+    if (!country) return (
+        <div className="flex flex-col h-[80vh] items-center justify-center space-y-4">
+            <Globe className="w-12 h-12 text-muted-foreground opacity-20" />
+            <p className="text-muted-foreground font-bold">Sovereign profile not found.</p>
+            <Button onClick={() => router.push('/countries')}>Return to Registry</Button>
+        </div>
+    )
 
     return (
         <div className="max-w-4xl mx-auto py-12 space-y-8">

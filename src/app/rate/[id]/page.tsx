@@ -27,11 +27,20 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide, Sparkles, FileText, ArrowLeft } from "lucide-react"
+import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide, Sparkles, FileText, ArrowLeft, Globe } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
+
+const DEMO_COUNTRIES: Partial<Country>[] = [
+  { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR", gdpSnapshot: 3400, year: 2025 },
+  { id: 'demo-us', name: "United States", region: "North America", incomeGroup: "Advanced", currency: "USD", gdpSnapshot: 26000, year: 2026 },
+  { id: 'demo-cn', name: "China", region: "Asia", incomeGroup: "Emerging", currency: "CNY", gdpSnapshot: 18000, year: 2026 },
+  { id: 'demo-de', name: "Germany", region: "Europe", incomeGroup: "Advanced", currency: "EUR", gdpSnapshot: 4500, year: 2026 },
+  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL", gdpSnapshot: 2100, year: 2026 },
+  { id: 'demo-za', name: "South Africa", region: "Africa", incomeGroup: "Emerging", currency: "ZAR", gdpSnapshot: 400, year: 2026 },
+];
 
 const STATIC_DATASETS: Record<string, Record<string, number>> = {
   "India": {
@@ -151,11 +160,18 @@ const STATIC_DATASETS: Record<string, Record<string, number>> = {
 };
 
 export default function RatingExecutionPage() {
-    const { id } = useParams()
+    const params = useParams()
     const router = useRouter()
     const searchParams = useSearchParams()
     const { toast } = useToast()
     
+    // Robust ID extraction from useParams
+    const rawId = params?.id
+    const id = useMemo(() => {
+        if (!rawId) return null;
+        return Array.isArray(rawId) ? rawId[0] : rawId;
+    }, [rawId]);
+
     const [country, setCountry] = useState<Country | null>(null)
     const [factSheet, setFactSheet] = useState<FactSheetData>({})
     const [autoFilledFields, setAutoFilledFields] = useState<Set<string>>(new Set())
@@ -176,19 +192,31 @@ export default function RatingExecutionPage() {
 
     useEffect(() => {
         async function load() {
+            if (!id) return;
+            console.log("Loading Rating Execution for ID:", id);
+
             try {
-                const [countriesData, modelsData, scalesData, paramsData] = await Promise.all([
+                const [dbCountries, modelsData, scalesData, paramsData] = await Promise.all([
                     getCountries(),
                     getModels(),
                     getScales(),
                     getParameters()
                 ])
                 
-                const found = countriesData.find(c => c.id === id)
+                // Merge demo countries so 'demo-us' etc are correctly identified
+                const allCountries = [
+                    ...dbCountries,
+                    ...DEMO_COUNTRIES.filter(d => !dbCountries.some(c => c.name.toLowerCase() === d.name?.toLowerCase()))
+                ] as Country[];
+
+                const found = allCountries.find(c => String(c.id) === String(id))
                 if (found) {
+                    console.log("Execution Country Found:", found.name);
                     setCountry(found)
                     const saved = await getFactSheet(found.id)
                     if (saved) setFactSheet(saved)
+                } else {
+                    console.warn("Execution Country NOT Found for ID:", id);
                 }
                 
                 setModels(modelsData)
@@ -283,68 +311,88 @@ export default function RatingExecutionPage() {
     }
 
     const handleAutoFetch = () => {
-        if (!country || !parameters.length) return;
-        
-        setIsGenerating(true)
-        
-        // Find dataset using case-insensitive lookup
+        if (!country) {
+            console.error("Auto Fetch Failed: 'country' state is null.");
+            toast({ title: "No country selected", variant: "destructive" });
+            return;
+        }
+    
+        if (!parameters.length) {
+            toast({
+                variant: "destructive",
+                title: "Parameters not loaded",
+                description: "Cannot auto fetch without parameters."
+            });
+            return;
+        }
+    
+        setIsGenerating(true);
+    
+        // 🔹 Normalize helper
+        const normalize = (str: string) =>
+            str.toLowerCase().replace(/[\s_]+/g, "").trim();
+    
+        // 🔹 Robust country matching
         const countryKey = Object.keys(STATIC_DATASETS).find(
-          key => key.toLowerCase() === country.name.toLowerCase()
+            key => normalize(key) === normalize(country.name)
         );
+    
         const benchmarkData = countryKey ? STATIC_DATASETS[countryKey] : null;
-
+    
+        console.log("Auto Fetch Country:", country.name);
+        console.log("Matched Benchmark Key:", countryKey);
+    
         if (!benchmarkData) {
-            toast({ variant: "destructive", title: "No Benchmark Data", description: `Static dataset not found for ${country.name}.` });
+            toast({
+                variant: "destructive",
+                title: "No Benchmark Data",
+                description: `Static dataset not found for ${country.name}.`
+            });
             setIsGenerating(false);
             return;
         }
-
-        // Build new object cleanly - do not mutate state directly
+    
         const nextFactSheet: FactSheetData = {};
         const filled = new Set<string>();
-
+    
         parameters.forEach(p => {
-            if (p.type !== 'raw') return;
-            
-            const slug = (p.slug || "").toLowerCase();
-            const name = (p.name || "").toLowerCase();
-            const id = p.id.toLowerCase();
-            
-            // Exact matching strategy to ensure data patches correctly
+            if ((p.type || "").toLowerCase() !== "raw") return;
+    
+            const slug = normalize(p.slug || "");
+            const name = normalize(p.name || "");
+            const id = normalize(p.id || "");
+    
             const benchMatchKey = Object.keys(benchmarkData).find(k => {
-                const lk = k.toLowerCase();
+                const lk = normalize(k);
                 return lk === slug || lk === name || lk === id;
             });
-
+    
             if (benchMatchKey) {
                 const val = benchmarkData[benchMatchKey];
                 nextFactSheet[p.id] = val;
                 filled.add(p.id);
             }
         });
-
-        console.log("FINAL FACTSHEET:", nextFactSheet);
-        
-        // Force new state object for UI re-render
+    
+        if (Object.keys(nextFactSheet).length === 0) {
+            toast({
+                variant: "destructive",
+                title: "Mapping Failed",
+                description: "No fields could be auto-filled. Check parameter mapping."
+            });
+            setIsGenerating(false);
+            return;
+        }
+    
         setFactSheet({ ...nextFactSheet });
         setAutoFilledFields(filled);
         setIsGenerating(false);
-        
-        toast({ title: "Sovereign Benchmarks Loaded", description: `Analytical profile for ${country.name} synchronized.` });
-        
-        // Also trigger an immediate calculation summary update
-        const numericInputs: Record<string, number> = {};
-        parameters.forEach(p => {
-            const rawVal = nextFactSheet[p.id];
-            const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-            numericInputs[p.id] = val;
+    
+        toast({
+            title: "Sovereign Benchmarks Loaded",
+            description: `Analytical profile for ${country.name} synchronized.`
         });
-        
-        if (selectedModel && selectedScale) {
-            const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters);
-            setCalculation(result);
-        }
-    }
+    };
 
     useEffect(() => {
         if (step === "review" && calculation && country && selectedModel && selectedScale && !rationale) {
@@ -400,6 +448,14 @@ export default function RatingExecutionPage() {
     }
 
     if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin w-8 h-8 text-primary" /></div>
+
+    if (!country) return (
+        <div className="flex flex-col h-[80vh] items-center justify-center space-y-4">
+            <Globe className="w-12 h-12 text-muted-foreground opacity-20" />
+            <p className="text-muted-foreground font-bold">Sovereign profile not found.</p>
+            <Button onClick={() => router.push('/countries')}>Return to Registry</Button>
+        </div>
+    )
 
     return (
         <div className="space-y-8">

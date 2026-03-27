@@ -48,7 +48,6 @@ export default function DashboardPage() {
   const db = useFirestore();
   const [selectedCountryIds, setSelectedCountryIds] = useState<string[]>([])
   const [transitionData, setTransitionData] = useState<any[]>([])
-  const [riskSnapshotData, setRiskSnapshotData] = useState<any[]>([])
   const [isMounted, setIsMounted] = useState(false)
 
   // Real-time countries collection (UNFILTERED)
@@ -57,14 +56,11 @@ export default function DashboardPage() {
 
   // Merge DB countries with Demo countries to match Registry Page
   const countries = useMemo(() => {
-    if (!dbCountries) return [];
     const merged = [
-      ...dbCountries,
-      ...DEMO_COUNTRIES.filter(d => !dbCountries.some(c => c.name.toLowerCase() === d.name?.toLowerCase()))
+      ...(dbCountries || []),
+      ...DEMO_COUNTRIES.filter(d => !(dbCountries || []).some(c => c.name.toLowerCase() === d.name?.toLowerCase()))
     ].map(c => c.name === "India" ? { ...c, currency: "INR" } as Country : c as Country);
     
-    // Debug log for data verification
-    console.log("Total countries:", merged.length);
     return merged;
   }, [dbCountries]);
 
@@ -91,7 +87,7 @@ export default function DashboardPage() {
     }
   }, [countries, selectedCountryIds.length])
 
-  // Compute transition and snapshot data on client side
+  // Compute transition data on client side
   useEffect(() => {
     if (!allRatings || !countries.length) return;
 
@@ -123,24 +119,6 @@ export default function DashboardPage() {
     } else {
       setTransitionData([]);
     }
-
-    // 2. Risk Snapshot Data (Latest score per country)
-    const snapshot = countries.map(c => {
-      const countryRatings = allRatings
-        .filter(r => r.countryId === c.id)
-        .sort((a, b) => {
-          const dA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
-          const dB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
-          return dB.getTime() - dA.getTime();
-        });
-      
-      return {
-        name: c.name,
-        score: countryRatings[0]?.finalScore || 0
-      };
-    }).filter(d => d.score > 0);
-    setRiskSnapshotData(snapshot);
-
   }, [allRatings, countries, selectedCountryIds]);
 
   const stats = {
@@ -238,47 +216,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-7">
-        <Card className="lg:col-span-7 border-2 shadow-sm">
-          <CardHeader className="bg-slate-50/50 border-b py-4 px-8">
-            <CardTitle className="text-sm font-black text-slate-900 uppercase tracking-widest">Country Risk Snapshot</CardTitle>
-            <CardDescription className="text-slate-500 font-medium">Latest quantitative score comparison across the portfolio.</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="h-[200px] w-full">
-              {riskSnapshotData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={riskSnapshotData} layout="vertical" margin={{ left: 40, right: 40 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                    <XAxis type="number" domain={[0, 100]} hide />
-                    <YAxis 
-                      dataKey="name" 
-                      type="category" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: '#1e293b', fontSize: 10, fontWeight: 900 }}
-                      width={100}
-                    />
-                    <Tooltip 
-                      cursor={{ fill: '#f8fafc' }}
-                      contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '10px', fontWeight: 'bold' }}
-                    />
-                    <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={20}>
-                      {riskSnapshotData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.score > 80 ? '#10b981' : entry.score > 50 ? 'hsl(var(--primary))' : '#f59e0b'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full space-y-2 opacity-40">
-                  <BarChart3 className="w-8 h-8" />
-                  <p className="text-[10px] font-black uppercase tracking-widest">No ratings available yet</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
         <Card className="lg:col-span-7 border-2 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between bg-slate-50/50 border-b py-6 px-8">
             <div className="space-y-1">

@@ -1,3 +1,4 @@
+
 "use client"
 
 import {
@@ -10,6 +11,7 @@ import {
   Database,
   Layers,
   Scale,
+  FileText,
 } from "lucide-react"
 import {
   Sidebar,
@@ -30,6 +32,7 @@ const items = [
   { title: "Dashboard", url: "/", icon: Home },
   { title: "Countries", url: "/countries", icon: Globe },
   { title: "Rating History", url: "/ratings", icon: History },
+  { title: "Sovereign Reports", url: "/reports", icon: FileText },
   { title: "Committee Approval", url: "/approvals", icon: ShieldCheck },
 ]
 

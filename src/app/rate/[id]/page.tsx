@@ -11,7 +11,9 @@ import {
     getModels,
     getScales,
     getParameters,
-    Country 
+    Country,
+    getRatingHistory,
+    saveReport
 } from "@/lib/store"
 import { 
     FactSheetData, 
@@ -27,7 +29,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide, Sparkles, FileText, ArrowLeft, Globe } from "lucide-react"
+import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide, Sparkles, FileText, ArrowLeft, Globe, FileOutput } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -375,7 +377,6 @@ export default function RatingExecutionPage() {
     
             const slug = (p.slug || "").toLowerCase();
     
-            // ✅ FIXED LINE (CRITICAL)
             const name = (p.name || "")
                 .toLowerCase()
                 .replace(/\s+/g, "_")
@@ -391,19 +392,8 @@ export default function RatingExecutionPage() {
             if (key && benchmarkData[key] !== undefined) {
                 nextFactSheet[p.id] = benchmarkData[key];
                 filled.add(p.id);
-    
-                console.log("MAPPING CHECK", {
-                    paramId: p.id,
-                    slug,
-                    name,
-                    id,
-                    mappedKey: key,
-                    value: benchmarkData[key]
-                });
             }
         });
-    
-        console.log("FINAL FACTSHEET:", nextFactSheet);
     
         setFactSheet({ ...nextFactSheet });
         setAutoFilledFields(filled);
@@ -414,6 +404,7 @@ export default function RatingExecutionPage() {
             description: `Analytical profile for ${country.name} synchronized.`
         });
     };
+
     useEffect(() => {
         if (step === "review" && calculation && country && selectedModel && selectedScale && !rationale) {
             const generate = async () => {
@@ -467,6 +458,100 @@ export default function RatingExecutionPage() {
         router.push('/')
     }
 
+    const handleGenerateReport = async () => {
+        if (!calculation || !country || !selectedModel || !selectedScale) return;
+        
+        setIsGenerating(true);
+        try {
+            // Get history to determine change
+            const history = await getRatingHistory(country.id);
+            const prev = history.length > 0 ? history[0].initialRating : undefined;
+            
+            let change: 'Upgrade' | 'Downgrade' | 'Stable' = 'Stable';
+            if (prev && prev !== calculation.initialRating) {
+                // Simplified comparison
+                change = calculation.finalScore > (history[0].finalScore || 0) ? 'Upgrade' : 'Downgrade';
+            }
+
+            const highStrengths = Object.entries(calculation.transformedScores)
+                .filter(([_, s]: any) => s >= 4)
+                .map(([pid]) => parameters.find(p => p.id === pid)?.name || pid);
+            
+            const lowRisks = Object.entries(calculation.transformedScores)
+                .filter(([_, s]: any) => s <= 2)
+                .map(([pid]) => parameters.find(p => p.id === pid)?.name || pid);
+
+            const deterministicRationale = `The sovereign credit profile of ${country.name} is primarily supported by its strong performance in ${highStrengths.length > 0 ? highStrengths.join(', ') : 'core fundamental indicators'}. However, the rating is tempered by risks associated with ${lowRisks.length > 0 ? lowRisks.join(', ') : 'ongoing global and internal macroeconomic volatility'}.`;
+
+            const growth = liveDerivedMetrics['gdp_growth'] || factSheet['gdp_growth'] || 0;
+            const debtGdp = liveDerivedMetrics['debt_to_gdp'] || 0;
+
+            const deterministicSummary = `${country.name} exhibits ${growth > 5 ? 'robust' : growth > 2 ? 'moderate' : 'subdued'} economic growth of ${growth.toFixed(1)}%. The government's debt-to-GDP ratio of ${debtGdp.toFixed(1)}% indicates a ${debtGdp > 80 ? 'high' : debtGdp > 40 ? 'moderate' : 'low'} leverage profile. Overall, the analytical framework suggests a ${calculation.finalScore > 70 ? 'strong' : calculation.finalScore > 40 ? 'stable' : 'vulnerable'} credit position for the ${executionYear} cycle.`;
+
+            const reportData = {
+                countryId: country.id,
+                countryName: country.name,
+                region: country.region,
+                modelId: selectedModel.id,
+                modelName: selectedModel.name,
+                modelVersion: selectedModel.version,
+                scaleId: selectedScale.id,
+                scaleName: selectedScale.name,
+                year: executionYear,
+                finalScore: calculation.finalScore,
+                rating: calculation.initialRating,
+                outlook: 'Stable',
+                status: 'Pending',
+                metrics: {
+                    gdp: factSheet['gdp_nominal'] || 0,
+                    gdpGrowth: growth,
+                    debtToGdp: debtGdp,
+                    inflation: factSheet['inflation'] || 0,
+                    fiscalBalance: factSheet['fiscal_balance'] || 0,
+                    fxReserves: factSheet['fx_reserves'] || 0
+                },
+                breakdown: Object.keys(selectedModel.weights).map(pid => {
+                    const p = parameters.find(param => param.id === pid);
+                    return {
+                        id: pid,
+                        name: p?.name || pid,
+                        category: p?.category || 'Economic',
+                        actualValue: calculation.actualValuesUsed[pid],
+                        score: calculation.transformedScores[pid],
+                        weight: selectedModel.weights[pid],
+                        impact: calculation.weightedScores[pid]
+                    };
+                }),
+                rationale: rationale || deterministicRationale,
+                summary: deterministicSummary,
+                previousRating: prev,
+                ratingChange: change,
+                dataSource: 'IMF / World Bank / Internal Registry'
+            };
+
+            const reportRef = await saveReport(reportData);
+            
+            // Also save the rating to history
+            await saveRating({
+                countryId: country.id,
+                modelId: selectedModel.id,
+                scaleId: selectedScale.id,
+                year: executionYear,
+                finalScore: calculation.finalScore,
+                initialRating: calculation.initialRating,
+                approvalStatus: 'pending',
+                reason: rationale || deterministicRationale
+            });
+
+            toast({ title: "Report Generated", description: "Sovereign report has been archived and finalized." });
+            router.push(`/reports/${reportRef.id}`);
+        } catch (e) {
+            toast({ variant: "destructive", title: "Report Error", description: "Failed to generate structured report document." });
+        } finally {
+            setIsGenerating(false);
+        }
+    }
+
     if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="animate-spin w-8 h-8 text-primary" /></div>
 
     if (!country) return (
@@ -500,9 +585,14 @@ export default function RatingExecutionPage() {
                     {step === "input" && <Button onClick={handleRun} className="bg-primary font-bold shadow-md hover:shadow-lg transition-all"><Calculator className="w-4 h-4 mr-2" /> Run Analysis</Button>}
                     {step === "calculate" && <Button onClick={() => setStep("review")} className="bg-primary font-bold">Continue to Review <ChevronRight className="w-4 h-4 ml-2" /></Button>}
                     {step === "review" && (
-                        <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg">
-                            <CheckCircle className="w-4 h-4 mr-2" /> Finalize Rating
-                        </Button>
+                        <>
+                            <Button onClick={handleGenerateReport} disabled={isGenerating} className="bg-slate-900 text-white font-bold shadow-lg">
+                                <FileOutput className="w-4 h-4 mr-2" /> Generate Report
+                            </Button>
+                            <Button onClick={handleFinalize} className="bg-green-600 hover:bg-green-700 text-white font-bold shadow-lg">
+                                <CheckCircle className="w-4 h-4 mr-2" /> Finalize Rating
+                            </Button>
+                        </>
                     )}
                 </div>
             </div>

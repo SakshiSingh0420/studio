@@ -166,7 +166,7 @@ export const updateRatingStatus = async (id: string, status: 'approved' | 'rejec
  * Does NOT touch master data (countries, parameters, models, scales).
  */
 export const resetAllRatings = async () => {
-  const collectionsToClear = ['ratings', 'ratingExecutions', 'ratingResults'];
+  const collectionsToClear = ['ratings', 'ratingExecutions', 'ratingResults', 'reports'];
   for (const collName of collectionsToClear) {
     try {
       const snap = await getDocs(collection(db, collName));
@@ -182,6 +182,43 @@ export const resetAllRatings = async () => {
     }
   }
 };
+
+// REPORTS
+export interface RatingReport {
+  id: string;
+  countryId: string;
+  countryName: string;
+  region: string;
+  modelId: string;
+  modelName: string;
+  modelVersion: number;
+  scaleId: string;
+  scaleName: string;
+  year: number;
+  finalScore: number;
+  rating: string;
+  outlook: string;
+  status: 'Pending' | 'Approved';
+  generatedAt: any;
+  metrics: {
+    gdp: number;
+    gdpGrowth: number;
+    debtToGdp: number;
+    inflation: number;
+    fiscalBalance: number;
+    fxReserves: number;
+  };
+  breakdown: any[];
+  rationale: string;
+  summary: string;
+  previousRating?: string;
+  ratingChange: 'Upgrade' | 'Downgrade' | 'Stable';
+  dataSource: string;
+}
+
+export const saveReport = (report: any) => addDoc(collection(db, 'reports'), { ...report, generatedAt: serverTimestamp() });
+export const getReports = () => getAll<RatingReport>('reports');
+export const getReport = (id: string) => getOne<RatingReport>('reports', id);
 
 // FACT SHEETS
 export const getFactSheet = (id: string) => getDoc(doc(db, 'factSheets', id)).then(s => s.exists() ? s.data() : null);

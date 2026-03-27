@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/accordion"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   Plus, Save, Layers, Settings2, AlertCircle, CheckCircle2, 
   Search, Filter, Zap, ChevronRight, Info, Trash2, 
-  Sparkles, BrainCircuit, Lock, Copy, History, Check, Star 
+  Sparkles, BrainCircuit, Lock, Copy, History, Check, Star,
+  Percent, Ruler
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -366,6 +367,30 @@ export default function ModelBuilderPage() {
                     </div>
                   </div>
 
+                  <div className="bg-primary/5 p-6 rounded-2xl border border-primary/10 space-y-4">
+                    <h3 className="text-sm font-black text-primary uppercase tracking-widest flex items-center gap-2">
+                      <BrainCircuit className="w-4 h-4" /> Model Definition Guidelines
+                    </h3>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <Percent className="w-3 h-3 text-primary" /> Analytical Weights
+                        </p>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          Weights are specified in percentage (%). The sum of all active parameter weights must equal exactly 100% to ensure quantitative accuracy.
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                          <Ruler className="w-3 h-3 text-primary" /> Scoring Thresholds
+                        </p>
+                        <p className="text-[11px] text-slate-600 leading-relaxed">
+                          Thresholds define the transition points for scoring. T2-T5 represent the boundaries for converting raw metrics into analytical 1-5 scores.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   <Accordion type="multiple" defaultValue={["Economic"]} className="space-y-4">
                     {CATEGORIES.map(cat => {
                         const catParams = params.filter(p => p.category === cat);
@@ -378,7 +403,7 @@ export default function ModelBuilderPage() {
                                             <Badge variant="outline" className="font-mono">{catParams.length}</Badge>
                                             <span className="font-bold text-lg">{cat}</span>
                                         </div>
-                                        <div className="font-bold text-primary">{weight}%</div>
+                                        <div className="font-bold text-primary">{weight}% Aggregate Weight</div>
                                     </div>
                                 </AccordionTrigger>
                                 <AccordionContent className="p-0 border-t">
@@ -397,24 +422,33 @@ export default function ModelBuilderPage() {
                                                         </div>
                                                         {isActive && (
                                                             <div className="flex items-center gap-2">
-                                                                <Input 
-                                                                    type="number" 
-                                                                    disabled={isPublished}
-                                                                    className="w-20 h-9 font-bold text-right" 
-                                                                    value={selectedModel.weights?.[p.id]} 
-                                                                    onChange={e => handleWeightChange(p.id, Number(e.target.value))} 
-                                                                />
-                                                                <span className="text-xs font-bold opacity-40">%</span>
+                                                                <div className="text-right flex flex-col items-end">
+                                                                    <span className="text-[9px] font-black uppercase text-muted-foreground leading-none mb-1">Impact Weight</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <Input 
+                                                                            type="number" 
+                                                                            disabled={isPublished}
+                                                                            className="w-20 h-9 font-bold text-right" 
+                                                                            value={selectedModel.weights?.[p.id]} 
+                                                                            onChange={e => handleWeightChange(p.id, Number(e.target.value))} 
+                                                                        />
+                                                                        <span className="text-xs font-bold opacity-40">%</span>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </div>
                                                     
                                                     {isActive && (
-                                                        <div className="mt-4 pl-8 pt-4 border-t border-primary/10">
+                                                        <div className="mt-4 pl-8 pt-4 border-t border-primary/10 space-y-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <Ruler className="w-3 h-3 text-primary" />
+                                                                <span className="text-[10px] font-black uppercase text-slate-700 tracking-wider">Analytical Scoring Thresholds (Benchmarks)</span>
+                                                            </div>
                                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                                                 {selectedModel.transformations?.[p.id]?.thresholds.map((t, i) => (
                                                                     <div key={i} className="space-y-1">
-                                                                        <label className="text-[9px] text-muted-foreground uppercase">T{i+2}</label>
+                                                                        <label className="text-[9px] text-muted-foreground uppercase font-black">Score Tier {i+2}</label>
                                                                         <Input 
                                                                             type="number" 
                                                                             disabled={isPublished}

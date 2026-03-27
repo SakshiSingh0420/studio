@@ -32,7 +32,123 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { generateRatingRationale } from "@/ai/flows/generate-rating-rationale"
-import { suggestFactSheetData } from "@/ai/flows/suggest-fact-sheet-data"
+
+const STATIC_DATASETS: Record<string, Record<string, number>> = {
+  "India": {
+    gdp: 3400,
+    government_debt: 3000,
+    government_revenue: 700,
+    fx_reserves: 600,
+    imports: 700,
+    exports: 670,
+    inflation: 5.5,
+    inflation_volatility: 2.5,
+    gdp_growth: 6.5,
+    fiscal_balance: -6,
+    interest_payments: 200,
+    governance_score: 0.6,
+    political_stability: 0.5,
+    social_risk: 0.5,
+    climate_risk: 0.4,
+    exchange_rate_volatility: 3,
+    gdp_per_capita: 2400
+  },
+  "United States": {
+    gdp: 26000,
+    government_debt: 34000,
+    government_revenue: 8000,
+    fx_reserves: 250,
+    imports: 3200,
+    exports: 2500,
+    inflation: 3.2,
+    inflation_volatility: 1.5,
+    gdp_growth: 2.0,
+    fiscal_balance: -5,
+    interest_payments: 900,
+    governance_score: 0.9,
+    political_stability: 0.8,
+    social_risk: 0.3,
+    climate_risk: 0.5,
+    exchange_rate_volatility: 1.2,
+    gdp_per_capita: 65000
+  },
+  "China": {
+    gdp: 18000,
+    government_debt: 14000,
+    government_revenue: 5000,
+    fx_reserves: 3200,
+    imports: 2700,
+    exports: 3400,
+    inflation: 2.0,
+    inflation_volatility: 1.2,
+    gdp_growth: 5.0,
+    fiscal_balance: -4,
+    interest_payments: 500,
+    governance_score: 0.7,
+    political_stability: 0.6,
+    social_risk: 0.4,
+    climate_risk: 0.5,
+    exchange_rate_volatility: 2,
+    gdp_per_capita: 12000
+  },
+  "Germany": {
+    gdp: 4500,
+    government_debt: 3000,
+    government_revenue: 1500,
+    fx_reserves: 300,
+    imports: 1500,
+    exports: 1800,
+    inflation: 2.5,
+    inflation_volatility: 1.0,
+    gdp_growth: 1.5,
+    fiscal_balance: -2,
+    interest_payments: 150,
+    governance_score: 0.9,
+    political_stability: 0.9,
+    social_risk: 0.2,
+    climate_risk: 0.4,
+    exchange_rate_volatility: 1.0,
+    gdp_per_capita: 50000
+  },
+  "Brazil": {
+    gdp: 2100,
+    government_debt: 1600,
+    government_revenue: 600,
+    fx_reserves: 350,
+    imports: 300,
+    exports: 280,
+    inflation: 4.5,
+    inflation_volatility: 2.2,
+    gdp_growth: 2.5,
+    fiscal_balance: -6,
+    interest_payments: 120,
+    governance_score: 0.5,
+    political_stability: 0.4,
+    social_risk: 0.6,
+    climate_risk: 0.6,
+    exchange_rate_volatility: 3.5,
+    gdp_per_capita: 9000
+  },
+  "South Africa": {
+    gdp: 400,
+    government_debt: 300,
+    government_revenue: 120,
+    fx_reserves: 60,
+    imports: 100,
+    exports: 90,
+    inflation: 5.0,
+    inflation_volatility: 3.0,
+    gdp_growth: 1.2,
+    fiscal_balance: -5,
+    interest_payments: 30,
+    governance_score: 0.5,
+    political_stability: 0.4,
+    social_risk: 0.7,
+    climate_risk: 0.7,
+    exchange_rate_volatility: 4,
+    gdp_per_capita: 6000
+  }
+};
 
 export default function RatingExecutionPage() {
     const { id } = useParams()
@@ -183,10 +299,13 @@ export default function RatingExecutionPage() {
         setIsGenerating(true)
         
         try {
-            const data = await suggestFactSheetData({ 
-                countryName: country.name,
-                currency: country.currency 
-            });
+            // LOAD STATIC DATASET
+            const data = STATIC_DATASETS[country.name] || null;
+
+            if (!data) {
+                toast({ variant: "destructive", title: "No Benchmark Data", description: `Static dataset not found for ${country.name}.` });
+                return;
+            }
 
             const filled = new Set<string>();
             const nextFactSheet = { ...factSheet };
@@ -199,7 +318,7 @@ export default function RatingExecutionPage() {
                 const normalizedSlug = slug.replace(/[\s-_]/g, "");
                 const normalizedName = name.replace(/[\s-_]/g, "");
 
-                // Aggressive matching against AI returned fields
+                // Robust matching against static data keys
                 const val = (data as any)[slug] ?? 
                             (data as any)[normalizedSlug] ?? 
                             (data as any)[normalizedName] ?? 
@@ -214,9 +333,9 @@ export default function RatingExecutionPage() {
 
             setFactSheet(nextFactSheet);
             setAutoFilledFields(filled);
-            toast({ title: "AI Data Retrieved", description: `Analytical benchmarks for ${country.name} synchronized.` });
+            toast({ title: "Sovereign Benchmarks Loaded", description: `Analytical profile for ${country.name} synchronized.` });
         } catch (error) {
-            console.error("AI Fetch Error:", error);
+            console.error("Fetch Error:", error);
             toast({ variant: "destructive", title: "Fetch Failed", description: "Could not retrieve analytical benchmarks." });
         } finally {
             setIsGenerating(false);
@@ -607,3 +726,4 @@ export default function RatingExecutionPage() {
         </div>
     )
 }
+

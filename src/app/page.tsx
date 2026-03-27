@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Plus, BarChart3, Target } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +35,15 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+const DEMO_COUNTRIES: Partial<Country>[] = [
+  { id: 'demo-in', name: "India", region: "Asia", incomeGroup: "Emerging", currency: "INR", gdpSnapshot: 3400, year: 2025 },
+  { id: 'demo-us', name: "United States", region: "North America", incomeGroup: "Advanced", currency: "USD", gdpSnapshot: 26000, year: 2026 },
+  { id: 'demo-cn', name: "China", region: "Asia", incomeGroup: "Emerging", currency: "CNY", gdpSnapshot: 18000, year: 2026 },
+  { id: 'demo-de', name: "Germany", region: "Europe", incomeGroup: "Advanced", currency: "EUR", gdpSnapshot: 4500, year: 2026 },
+  { id: 'demo-br', name: "Brazil", region: "South America", incomeGroup: "Emerging", currency: "BRL", gdpSnapshot: 2100, year: 2026 },
+  { id: 'demo-za', name: "South Africa", region: "Africa", incomeGroup: "Emerging", currency: "ZAR", gdpSnapshot: 400, year: 2026 },
+];
+
 export default function DashboardPage() {
   const db = useFirestore();
   const [selectedCountryIds, setSelectedCountryIds] = useState<string[]>([])
@@ -42,9 +51,22 @@ export default function DashboardPage() {
   const [riskSnapshotData, setRiskSnapshotData] = useState<any[]>([])
   const [isMounted, setIsMounted] = useState(false)
 
-  // Real-time countries collection
+  // Real-time countries collection (UNFILTERED)
   const countriesQuery = useMemoFirebase(() => collection(db, 'countries'), [db]);
-  const { data: countries, isLoading: loadingCountries } = useCollection<Country>(countriesQuery);
+  const { data: dbCountries, isLoading: loadingCountries } = useCollection<Country>(countriesQuery);
+
+  // Merge DB countries with Demo countries to match Registry Page
+  const countries = useMemo(() => {
+    if (!dbCountries) return [];
+    const merged = [
+      ...dbCountries,
+      ...DEMO_COUNTRIES.filter(d => !dbCountries.some(c => c.name.toLowerCase() === d.name?.toLowerCase()))
+    ].map(c => c.name === "India" ? { ...c, currency: "INR" } as Country : c as Country);
+    
+    // Debug log for data verification
+    console.log("Total countries:", merged.length);
+    return merged;
+  }, [dbCountries]);
 
   // Real-time ratings (Recent activity)
   const recentRatingsQuery = useMemoFirebase(() => 
@@ -64,14 +86,14 @@ export default function DashboardPage() {
 
   // Default selection to first few countries if none selected
   useEffect(() => {
-    if (countries && selectedCountryIds.length === 0 && countries.length > 0) {
+    if (countries.length > 0 && selectedCountryIds.length === 0) {
       setSelectedCountryIds([countries[0].id])
     }
   }, [countries, selectedCountryIds.length])
 
   // Compute transition and snapshot data on client side
   useEffect(() => {
-    if (!allRatings || !countries) return;
+    if (!allRatings || !countries.length) return;
 
     // 1. Transition Chart Data
     if (selectedCountryIds.length > 0) {
@@ -122,7 +144,7 @@ export default function DashboardPage() {
   }, [allRatings, countries, selectedCountryIds]);
 
   const stats = {
-    totalCountries: countries?.length || 0,
+    totalCountries: countries.length,
     ratings: allRatings?.length || 0,
     pending: allRatings?.filter(r => r.approvalStatus === 'pending').length || 0,
     averageScore: allRatings && allRatings.length > 0 
@@ -132,7 +154,7 @@ export default function DashboardPage() {
 
   const recentRatings = (recentRatingsData || []).map(r => ({
     ...r,
-    countryName: countries?.find(c => c.id === r.countryId)?.name || 'Unknown Sovereign'
+    countryName: countries.find(c => c.id === r.countryId)?.name || 'Unknown Sovereign'
   }))
 
   const toggleCountry = (id: string) => {
@@ -216,7 +238,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-7">
-        {/* New Visual: Country Risk Snapshot */}
         <Card className="lg:col-span-7 border-2 shadow-sm">
           <CardHeader className="bg-slate-50/50 border-b py-4 px-8">
             <CardTitle className="text-sm font-black text-slate-900 uppercase tracking-widest">Country Risk Snapshot</CardTitle>
@@ -275,7 +296,7 @@ export default function DashboardPage() {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Sovereign Entities</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {countries?.map(c => (
+                {countries.map(c => (
                   <DropdownMenuCheckboxItem
                     key={c.id}
                     checked={selectedCountryIds.includes(c.id)}
@@ -322,7 +343,7 @@ export default function DashboardPage() {
                       wrapperStyle={{ fontWeight: 700, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
                     />
                     {selectedCountryIds.map((cid, index) => {
-                      const name = countries?.find(c => c.id === cid)?.name;
+                      const name = countries.find(c => c.id === cid)?.name;
                       if (!name) return null;
                       return (
                         <Line
@@ -366,7 +387,7 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(countries || []).map((country) => (
+                {countries.map((country) => (
                   <TableRow key={country.id} className="hover:bg-slate-50/50 transition-colors">
                     <TableCell className="px-8 py-5 font-bold text-slate-900">{country.name}</TableCell>
                     <TableCell className="py-5 text-slate-600 font-medium">{country.region}</TableCell>
@@ -375,7 +396,7 @@ export default function DashboardPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {(!countries || countries.length === 0) && (
+                {countries.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={3} className="h-32 text-center text-muted-foreground">
                       No countries found. Add some in the Sovereign Registry.

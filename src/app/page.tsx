@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Plus } from "lucide-react"
+import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Plus, BarChart3, Target } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useCollection, useMemoFirebase, useFirestore } from "@/firebase"
@@ -19,7 +19,10 @@ import {
   Tooltip, 
   Legend, 
   ResponsiveContainer,
-  ReferenceLine
+  ReferenceLine,
+  BarChart,
+  Bar,
+  Cell
 } from "recharts"
 import {
   DropdownMenu,
@@ -36,6 +39,7 @@ export default function DashboardPage() {
   const db = useFirestore();
   const [selectedCountryIds, setSelectedCountryIds] = useState<string[]>([])
   const [transitionData, setTransitionData] = useState<any[]>([])
+  const [riskSnapshotData, setRiskSnapshotData] = useState<any[]>([])
   const [isMounted, setIsMounted] = useState(false)
 
   // Real-time countries collection
@@ -65,42 +69,60 @@ export default function DashboardPage() {
     }
   }, [countries, selectedCountryIds.length])
 
-  // Compute transition data on client side after hydration
+  // Compute transition and snapshot data on client side
   useEffect(() => {
-    if (!allRatings || !countries || selectedCountryIds.length === 0) {
+    if (!allRatings || !countries) return;
+
+    // 1. Transition Chart Data
+    if (selectedCountryIds.length > 0) {
+      const dates = Array.from(new Set(allRatings.map(r => {
+        const d = r.createdAt?.toDate ? r.createdAt.toDate() : new Date();
+        return d.toLocaleDateString();
+      }))).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+      const computedTransition = dates.map(dateStr => {
+        const entry: any = { date: dateStr };
+        selectedCountryIds.forEach(cid => {
+          const country = countries.find(c => c.id === cid);
+          if (!country) return;
+
+          const ratingOnDate = allRatings.find(r => {
+            const rd = r.createdAt?.toDate ? r.createdAt.toDate() : new Date();
+            return rd.toLocaleDateString() === dateStr && r.countryId === cid;
+          });
+
+          if (ratingOnDate) {
+            entry[country.name] = ratingOnDate.finalScore;
+          }
+        });
+        return entry;
+      });
+      setTransitionData(computedTransition);
+    } else {
       setTransitionData([]);
-      return;
     }
 
-    // Get all unique dates (formatted) across all ratings
-    const dates = Array.from(new Set(allRatings.map(r => {
-      const d = r.createdAt?.toDate ? r.createdAt.toDate() : new Date();
-      return d.toLocaleDateString();
-    }))).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-
-    const computed = dates.map(dateStr => {
-      const entry: any = { date: dateStr };
-      selectedCountryIds.forEach(cid => {
-        const country = countries.find(c => c.id === cid);
-        if (!country) return;
-
-        const ratingOnDate = allRatings.find(r => {
-          const rd = r.createdAt?.toDate ? r.createdAt.toDate() : new Date();
-          return rd.toLocaleDateString() === dateStr && r.countryId === cid;
+    // 2. Risk Snapshot Data (Latest score per country)
+    const snapshot = countries.map(c => {
+      const countryRatings = allRatings
+        .filter(r => r.countryId === c.id)
+        .sort((a, b) => {
+          const dA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0);
+          const dB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0);
+          return dB.getTime() - dA.getTime();
         });
+      
+      return {
+        name: c.name,
+        score: countryRatings[0]?.finalScore || 0
+      };
+    }).filter(d => d.score > 0);
+    setRiskSnapshotData(snapshot);
 
-        if (ratingOnDate) {
-          entry[country.name] = ratingOnDate.finalScore;
-        }
-      });
-      return entry;
-    });
-
-    setTransitionData(computed);
   }, [allRatings, countries, selectedCountryIds]);
 
   const stats = {
-    countries: countries?.length || 0,
+    totalCountries: countries?.length || 0,
     ratings: allRatings?.length || 0,
     pending: allRatings?.filter(r => r.approvalStatus === 'pending').length || 0,
     averageScore: allRatings && allRatings.length > 0 
@@ -151,49 +173,91 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="metric-card border-l-4 border-l-primary">
+        <Card className="metric-card border-l-4 border-l-primary hover:shadow-lg transition-all duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-black uppercase text-slate-500 tracking-wider">Active Portfolio</CardTitle>
-            <Globe className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-[11px] font-black uppercase text-slate-700 tracking-wider">Total Countries</CardTitle>
+            <Globe className="w-4 h-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black text-slate-900">{stats.countries} Countries</div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Managed in live repository</p>
+            <div className="text-4xl font-black text-slate-900">{stats.totalCountries}</div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Managed in live registry</p>
           </CardContent>
         </Card>
-        <Card className="metric-card border-l-4 border-l-accent">
+        <Card className="metric-card border-l-4 border-l-accent hover:shadow-lg transition-all duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-black uppercase text-slate-500 tracking-wider">Ratings Sessions</CardTitle>
-            <TrendingUp className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-[11px] font-black uppercase text-slate-700 tracking-wider">Ratings Sessions</CardTitle>
+            <BarChart3 className="w-4 h-4 text-accent" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black text-slate-900">{stats.ratings} Conducted</div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Historical analytical sessions</p>
+            <div className="text-4xl font-black text-slate-900">{stats.ratings}</div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Conducted to date</p>
           </CardContent>
         </Card>
-        <Card className="metric-card border-l-4 border-l-yellow-500">
+        <Card className="metric-card border-l-4 border-l-yellow-500 hover:shadow-lg transition-all duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-black uppercase text-slate-500 tracking-wider">Committee Queue</CardTitle>
-            <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-[11px] font-black uppercase text-slate-700 tracking-wider">Committee Queue</CardTitle>
+            <ShieldCheck className="w-4 h-4 text-yellow-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black text-slate-900">{stats.pending} Pending</div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Awaiting validation</p>
+            <div className="text-4xl font-black text-slate-900">{stats.pending}</div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Awaiting sign-off</p>
           </CardContent>
         </Card>
-        <Card className="metric-card border-l-4 border-l-green-500">
+        <Card className="metric-card border-l-4 border-l-green-500 hover:shadow-lg transition-all duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-black uppercase text-slate-500 tracking-wider">Avg. Confidence</CardTitle>
-            <Clock className="w-4 h-4 text-muted-foreground" />
+            <CardTitle className="text-[11px] font-black uppercase text-slate-700 tracking-wider">Avg. Confidence</CardTitle>
+            <Target className="w-4 h-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black text-slate-900">{stats.averageScore.toFixed(1)}%</div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Portfolio weighted aggregate</p>
+            <div className="text-4xl font-black text-slate-900">{stats.averageScore.toFixed(1)}%</div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Portfolio aggregate</p>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-7">
+        {/* New Visual: Country Risk Snapshot */}
+        <Card className="lg:col-span-7 border-2 shadow-sm">
+          <CardHeader className="bg-slate-50/50 border-b py-4 px-8">
+            <CardTitle className="text-sm font-black text-slate-900 uppercase tracking-widest">Country Risk Snapshot</CardTitle>
+            <CardDescription className="text-slate-500 font-medium">Latest quantitative score comparison across the portfolio.</CardDescription>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="h-[200px] w-full">
+              {riskSnapshotData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={riskSnapshotData} layout="vertical" margin={{ left: 40, right: 40 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
+                    <XAxis type="number" domain={[0, 100]} hide />
+                    <YAxis 
+                      dataKey="name" 
+                      type="category" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fill: '#1e293b', fontSize: 10, fontWeight: 900 }}
+                      width={100}
+                    />
+                    <Tooltip 
+                      cursor={{ fill: '#f8fafc' }}
+                      contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '10px', fontWeight: 'bold' }}
+                    />
+                    <Bar dataKey="score" radius={[0, 4, 4, 0]} barSize={20}>
+                      {riskSnapshotData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.score > 80 ? '#10b981' : entry.score > 50 ? 'hsl(var(--primary))' : '#f59e0b'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full space-y-2 opacity-40">
+                  <BarChart3 className="w-8 h-8" />
+                  <p className="text-[10px] font-black uppercase tracking-widest">No ratings available yet</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="lg:col-span-7 border-2 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between bg-slate-50/50 border-b py-6 px-8">
             <div className="space-y-1">
@@ -204,7 +268,7 @@ export default function DashboardPage() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="border-2 font-bold h-10 px-4">
                   <Filter className="w-4 h-4 mr-2" /> 
-                  Compare Sovereigns ({selectedCountryIds.length})
+                  Compare ({selectedCountryIds.length})
                   <ChevronDown className="ml-2 w-4 h-4 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
@@ -314,7 +378,7 @@ export default function DashboardPage() {
                 {(!countries || countries.length === 0) && (
                   <TableRow>
                     <TableCell colSpan={3} className="h-32 text-center text-muted-foreground">
-                      No countries found. Add some in the Firebase Console under 'countries' collection.
+                      No countries found. Add some in the Sovereign Registry.
                     </TableCell>
                   </TableRow>
                 )}

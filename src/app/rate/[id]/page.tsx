@@ -299,6 +299,7 @@ export default function RatingExecutionPage() {
             return;
         }
 
+        // Build new object cleanly - do not mutate state directly
         const nextFactSheet: FactSheetData = {};
         const filled = new Set<string>();
 
@@ -316,20 +317,22 @@ export default function RatingExecutionPage() {
             });
 
             if (benchMatchKey) {
-                const val = (benchmarkData as any)[benchMatchKey];
+                const val = benchmarkData[benchMatchKey];
                 nextFactSheet[p.id] = val;
                 filled.add(p.id);
             }
         });
 
         console.log("FINAL FACTSHEET:", nextFactSheet);
+        
+        // Force new state object for UI re-render
         setFactSheet({ ...nextFactSheet });
         setAutoFilledFields(filled);
         setIsGenerating(false);
         
         toast({ title: "Sovereign Benchmarks Loaded", description: `Analytical profile for ${country.name} synchronized.` });
         
-        // Also trigger an immediate calculation for the summary if we have all data
+        // Also trigger an immediate calculation summary update
         const numericInputs: Record<string, number> = {};
         parameters.forEach(p => {
             const rawVal = nextFactSheet[p.id];

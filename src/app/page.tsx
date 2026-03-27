@@ -165,7 +165,7 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-black tracking-tighter text-slate-900">Sovereign Analytics Dashboard</h1>
           <p className="text-muted-foreground mt-1 text-lg">Real-time overview of global credit ratings and risk profiles.</p>
         </div>
-        <Button asChild className="bg-primary hover:bg-primary/90 font-bold shadow-md h-12 px-8 rounded-2xl">
+        <Button asChild className="bg-primary hover:bg-primary/90 font-bold shadow-md h-12 px-8 rounded-2xl" suppressHydrationWarning>
           <Link href="/countries#search">
             <Plus className="w-5 h-5 mr-2" /> Start New Rating
           </Link>
@@ -224,7 +224,7 @@ export default function DashboardPage() {
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="border-2 font-bold h-10 px-4">
+                <Button variant="outline" className="border-2 font-bold h-10 px-4" suppressHydrationWarning>
                   <Filter className="w-4 h-4 mr-2" /> 
                   Compare ({selectedCountryIds.length})
                   <ChevronDown className="ml-2 w-4 h-4 opacity-50" />
@@ -361,7 +361,7 @@ export default function DashboardPage() {
                 <div key={r.id || i} className="flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 transition-all border-2 border-transparent hover:border-slate-100 group">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-black text-slate-900 truncate group-hover:text-primary transition-colors">{r.countryName}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5" suppressHydrationWarning>
                       {r.createdAt?.seconds ? new Date(r.createdAt.seconds * 1000).toLocaleDateString() : 'Real-time update'}
                     </p>
                   </div>

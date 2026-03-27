@@ -30,34 +30,6 @@ export default function RatingsHistoryPage() {
   const { toast } = useToast()
   const [models, setModels] = useState<any[]>([])
 
-  // async function load() {
-  //   const dbCountries = await getCountries()
-  
-  //   const countries = [
-  //     ...dbCountries,
-  //     { id: 'demo-in', name: "India" },
-  //     { id: 'demo-us', name: "United States" },
-  //     { id: 'demo-cn', name: "China" },
-  //     { id: 'demo-de', name: "Germany" },
-  //     { id: 'demo-br', name: "Brazil" },
-  //     { id: 'demo-za', name: "South Africa" }
-  //   ]
-  
-  //   const all: any[] = []
-  
-  //   for (const c of countries) {
-  //     const history = await getRatingHistory(String(c.id))
-  //     all.push(...history.map(r => ({ ...r, countryName: c.name })))
-  //   }
-  
-  //   setRatings(
-  //     all.sort((a, b) => {
-  //       const dateA = a.createdAt?.toDate?.() || new Date(0)
-  //       const dateB = b.createdAt?.toDate?.() || new Date(0)
-  //       return dateB.getTime() - dateA.getTime()
-  //     })
-  //   )
-  // }
   async function load() {
     const dbCountries = await getCountries()
     const modelList = await getModels()
@@ -91,7 +63,6 @@ export default function RatingsHistoryPage() {
     try {
       await resetAllRatings();
       toast({ title: "Data Reset Complete", description: "All historical rating sessions have been cleared." });
-      // Force refresh by re-loading state
       load();
     } catch (e) {
       toast({ title: "Reset Failed", variant: "destructive" });
@@ -117,7 +88,7 @@ export default function RatingsHistoryPage() {
         <div className="flex gap-2">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" className="text-destructive hover:bg-destructive/10">
+              <Button variant="outline" className="text-destructive hover:bg-destructive/10" suppressHydrationWarning>
                 <RotateCcw className="w-4 h-4 mr-2" /> Reset All Data
               </Button>
             </AlertDialogTrigger>
@@ -136,7 +107,7 @@ export default function RatingsHistoryPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          <Button variant="outline">
+          <Button variant="outline" suppressHydrationWarning>
             <Download className="w-4 h-4 mr-2" /> Export PDF
           </Button>
         </div>
@@ -157,6 +128,7 @@ export default function RatingsHistoryPage() {
                   placeholder="Filter by country or rating..."
                   value={search}
                   onChange={e => setSearch(e.target.value)}
+                  suppressHydrationWarning
                 />
               </div>
             </div>
@@ -193,7 +165,7 @@ export default function RatingsHistoryPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon">
+                    <Button variant="ghost" size="icon" suppressHydrationWarning>
                       <ExternalLink className="w-4 h-4" />
                     </Button>
                   </TableCell>

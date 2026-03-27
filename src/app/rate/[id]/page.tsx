@@ -217,7 +217,6 @@ export default function RatingExecutionPage() {
 
     /**
      * REACTIVE ANALYTICAL CONTEXT
-     * This derived state handles real-time formula recalculation when factSheet changes.
      */
     const liveDerivedMetrics = useMemo(() => {
         if (!parameters.length) return {};
@@ -225,7 +224,6 @@ export default function RatingExecutionPage() {
         const context: Record<string, number> = {}; 
         const normalizeKey = (str: string) => (str || "").toLowerCase().replace(/[\s-_]/g, "");
         
-        // 1. Build context from raw values
         parameters.forEach(p => {
             const rawVal = factSheet[p.id];
             const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
@@ -245,26 +243,24 @@ export default function RatingExecutionPage() {
         
         const results: Record<string, number> = {};
 
-        // 2. Resolve Derived Metrics
         parameters.filter(p => p.type === 'derived').forEach(p => {
             const slug = (p.slug || "").toLowerCase();
             const name = (p.name || "").toLowerCase();
             
             let resultValue = 0;
 
-            // Logic matching for common sovereign ratios
             if (slug.includes('debt_to_gdp') || name.includes('debt_to_gdp')) {
                 const debt = context['government_debt'] || context['debt'] || context['total_debt'] || 0;
                 const gdp = context['gdp'] || context['nominal_gdp'] || 1;
-                resultValue = (debt / gdp) * 100;
+                resultValue = (debt / (gdp || 1)) * 100;
             } else if (slug.includes('reserve_cover') || name.includes('reserve_cover')) {
                 const res = context['fx_reserves'] || context['reserves'] || 0;
                 const imp = context['imports'] || 1;
-                resultValue = res / imp;
+                resultValue = res / (imp || 1);
             } else if (slug.includes('interest_to_revenue') || name.includes('interest_to_revenue')) {
                 const int = context['interest_payments'] || context['interest'] || 0;
                 const rev = context['government_revenue'] || context['revenue'] || 1;
-                resultValue = (int / rev) * 100;
+                resultValue = (int / (rev || 1)) * 100;
             } else if (p.formula) {
                 resultValue = evaluateFormula(p.formula, context);
             }
@@ -295,12 +291,16 @@ export default function RatingExecutionPage() {
     }
 
     const handleAutoFetch = () => {
-        if (!country || !selectedModel || !selectedScale || !parameters.length) return;
+        if (!country || !parameters.length) return;
         
         setIsGenerating(true)
         console.log("Auto Fetch Triggered for country:", country.name);
         
-        const benchmarkData = STATIC_DATASETS[country.name] || null;
+        // Find dataset using case-insensitive lookup
+        const countryKey = Object.keys(STATIC_DATASETS).find(
+          key => key.toLowerCase() === country.name.toLowerCase()
+        );
+        const benchmarkData = countryKey ? STATIC_DATASETS[countryKey] : null;
 
         if (!benchmarkData) {
             toast({ variant: "destructive", title: "No Benchmark Data", description: `Static dataset not found for ${country.name}.` });
@@ -316,14 +316,18 @@ export default function RatingExecutionPage() {
             
             const slug = (p.slug || "").toLowerCase();
             const name = (p.name || "").toLowerCase();
+            const pid = p.id.toLowerCase();
+            
             const normalizedSlug = slug.replace(/[\s-_]/g, "");
             const normalizedName = name.replace(/[\s-_]/g, "");
+            const normalizedPid = pid.replace(/[\s-_]/g, "");
 
-            // Robust matching against benchmark data keys
+            // Robust multi-path matching against benchmark data keys
             const val = (benchmarkData as any)[slug] ?? 
+                        (benchmarkData as any)[pid] ??
                         (benchmarkData as any)[normalizedSlug] ?? 
+                        (benchmarkData as any)[normalizedPid] ??
                         (benchmarkData as any)[normalizedName] ?? 
-                        (benchmarkData as any)[p.id] ?? 
                         null;
 
             if (val !== undefined && val !== null) {
@@ -332,27 +336,12 @@ export default function RatingExecutionPage() {
             }
         });
 
-        // 1. Update State with Predefined Dataset
         setFactSheet(nextFactSheet);
         setAutoFilledFields(filled);
-        
-        // 2. Force Immediate Re-calculation
-        // We pass the fresh data object directly to runDynamicRating to ensure calculation uses current fetch
-        setTimeout(() => {
-            const numericInputs: Record<string, number> = {};
-            parameters.forEach(p => {
-                const rawVal = nextFactSheet[p.id];
-                const val = (rawVal !== undefined && rawVal !== null && rawVal !== "") ? Number(rawVal) : 0;
-                numericInputs[p.id] = val;
-            });
-
-            const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
-            setCalculation(result);
-            console.log("Analytical Recalculation Complete:", result);
-        }, 0);
-
         setIsGenerating(false);
+        
         toast({ title: "Sovereign Benchmarks Loaded", description: `Analytical profile for ${country.name} synchronized.` });
+        console.log("FactSheet Updated:", nextFactSheet);
     }
 
     useEffect(() => {

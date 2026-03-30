@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { getRatingById, getCountries, getModels, getParameters, Rating, Country } from "@/lib/store"
+import { getRatingById, getCountries, getModels, getParameters, Rating, Country, getRatingHistory } from "@/lib/store"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,10 @@ import {
     Database,
     LineChart,
     ArrowLeft,
-    CheckCircle2
+    CheckCircle2,
+    ArrowUp,
+    ArrowDown,
+    Minus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -28,6 +31,7 @@ export default function RatingDetailPage() {
   const [rating, setRating] = useState<Rating | null>(null)
   const [country, setCountry] = useState<Country | null>(null)
   const [model, setModel] = useState<any>(null)
+  const [history, setHistory] = useState<Rating[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -41,10 +45,13 @@ export default function RatingDetailPage() {
         }
         setRating(ratingData)
 
-        const [countries, models] = await Promise.all([
+        const [countries, models, historyData] = await Promise.all([
             getCountries(),
-            getModels()
+            getModels(),
+            getRatingHistory(ratingData.countryId)
         ])
+
+        setHistory(historyData)
 
         const demoCountries = [
             { id: 'demo-in', name: "India", region: "Asia" },
@@ -68,6 +75,39 @@ export default function RatingDetailPage() {
     load()
   }, [params?.id])
 
+  const previousRating = useMemo(() => {
+    if (!rating || !history.length) return null;
+    // Find version immediately preceding this one
+    return history.find(h => h.version === (rating.version || 1) - 1);
+  }, [rating, history]);
+
+  const comparisonData = useMemo(() => {
+    if (!rating) return [];
+    
+    // Support both the specific requested key and the existing breakdown key
+    const currentBreakdown = rating.snapshot?.parameterBreakdown || rating.snapshot?.breakdown || [];
+    const prevBreakdown = previousRating?.snapshot?.parameterBreakdown || previousRating?.snapshot?.breakdown || [];
+    
+    return currentBreakdown.map((curr: any) => {
+        // Try to match by parameterId or the standard 'id' field used in some snapshots
+        const prev = prevBreakdown.find((p: any) => (p.parameterId || p.id) === (curr.parameterId || curr.id));
+        
+        const currVal = curr.value ?? curr.actualValue ?? 0;
+        const prevVal = prev ? (prev.value ?? prev.actualValue ?? 0) : null;
+        
+        const delta = prevVal !== null ? currVal - prevVal : null;
+        
+        return {
+            ...curr,
+            parameterId: curr.parameterId || curr.id,
+            currentValue: currVal,
+            prevValue: prevVal,
+            delta,
+            hasChanged: delta !== 0 && delta !== null
+        };
+    });
+  }, [rating, previousRating]);
+
   if (loading) return <div className="flex h-screen items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>
   
   if (!rating) return (
@@ -77,8 +117,6 @@ export default function RatingDetailPage() {
           <Button onClick={() => router.push('/ratings')}>Return to Archive</Button>
       </div>
   )
-
-  const snapshot = rating.snapshot;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-20">
@@ -186,9 +224,11 @@ export default function RatingDetailPage() {
                         <CardTitle className="text-2xl font-black text-slate-900 uppercase tracking-tight">Point-in-Time Analytical Snapshot</CardTitle>
                         <CardDescription className="font-medium text-slate-500">The specific quantitative variables used to derive this rating version.</CardDescription>
                     </div>
-                    <Badge variant="outline" className="border-primary/20 text-primary font-black uppercase text-[10px] px-4 h-8 bg-primary/5">
-                        Immutable Ledger Record
-                    </Badge>
+                    {previousRating && (
+                        <Badge className="bg-amber-100 text-amber-800 border-none font-black text-[10px] px-4 h-8">
+                            COMPARING VS VERSION {previousRating.version}
+                        </Badge>
+                    )}
                 </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -199,19 +239,29 @@ export default function RatingDetailPage() {
                             <TableHead className="font-black text-slate-900 uppercase text-[10px] tracking-widest text-center">Observed Value</TableHead>
                             <TableHead className="font-black text-slate-900 uppercase text-[10px] tracking-widest text-center">Score (1-5)</TableHead>
                             <TableHead className="font-black text-slate-900 uppercase text-[10px] tracking-widest text-center">Model Weight</TableHead>
-                            <TableHead className="text-right px-10 font-black text-slate-900 uppercase text-[10px] tracking-widest">Impact</TableHead>
+                            <TableHead className="font-black text-slate-900 uppercase text-[10px] tracking-widest text-center">Impact</TableHead>
+                            <TableHead className="text-right px-10 font-black text-slate-900 uppercase text-[10px] tracking-widest">Delta</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {snapshot?.breakdown ? (
-                            snapshot.breakdown.map((p: any) => (
-                                <TableRow key={p.id} className="hover:bg-slate-50/50 transition-colors border-b last:border-0">
+                        {comparisonData.length > 0 ? (
+                            comparisonData.map((p: any) => (
+                                <TableRow key={p.parameterId} className="hover:bg-slate-50/50 transition-colors border-b last:border-0">
                                     <TableCell className="px-10 py-6 font-bold text-slate-900">
                                         {p.name}
-                                        <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">{p.category}</p>
+                                        <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">{p.category || 'Metric'}</p>
                                     </TableCell>
-                                    <TableCell className="text-center font-mono font-bold text-primary">
-                                        {p.actualValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    <TableCell className="text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className="font-mono font-bold text-primary text-base">
+                                                {p.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                            {p.prevValue !== null && (
+                                                <span className="text-[10px] text-muted-foreground font-medium">
+                                                    PREV: {p.prevValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="text-center">
                                         <Badge variant="outline" className={cn(
@@ -222,13 +272,26 @@ export default function RatingDetailPage() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-center font-bold text-slate-500">{p.weight}%</TableCell>
-                                    <TableCell className="text-right px-10 font-black text-slate-900">{p.impact.toFixed(2)}</TableCell>
+                                    <TableCell className="text-center font-black text-slate-900">{p.impact.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right px-10">
+                                        {p.delta !== null ? (
+                                            <div className={cn(
+                                                "flex items-center justify-end gap-1 font-mono font-bold text-xs",
+                                                p.delta > 0 ? "text-green-600" : p.delta < 0 ? "text-red-600" : "text-slate-400"
+                                            )}>
+                                                {p.delta > 0 ? <ArrowUp className="w-3 h-3" /> : p.delta < 0 ? <ArrowDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                                                {Math.abs(p.delta).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </div>
+                                        ) : (
+                                            <span className="text-slate-300 text-[10px] font-black uppercase">NEW</span>
+                                        )}
+                                    </TableCell>
                                 </TableRow>
                             ))
                         ) : (
                             <TableRow>
-                                <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic font-medium">
-                                    Full parameter breakdown is unavailable for this rating version.
+                                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground italic font-medium">
+                                    Detailed parameter breakdown not available for this version.
                                 </TableCell>
                             </TableRow>
                         )}

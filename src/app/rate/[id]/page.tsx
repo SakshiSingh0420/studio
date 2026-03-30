@@ -333,29 +333,36 @@ export default function RatingExecutionPage() {
         }
     
         const FIELD_MAP: Record<string, string> = {
+            // GDP
             gdp: "gdp_nominal",
             gdp_nominal: "gdp_nominal",
             nominal_gdp: "gdp_nominal",
     
+            // Debt
             government_debt: "government_debt",
             debt: "government_debt",
             total_debt: "government_debt",
             gov_debt: "government_debt",
     
+            // Revenue
             government_revenue: "government_revenue",
             revenue: "government_revenue",
             gov_revenue: "government_revenue",
     
+            // Reserves
             fx_reserves: "fx_reserves",
             reserves: "fx_reserves",
             foreign_reserves: "fx_reserves",
     
+            // Interest
             interest_payments: "interest_payments",
             interest: "interest_payments",
     
+            // Growth
             gdp_growth: "gdp_growth",
             growth: "gdp_growth",
     
+            // Others
             imports: "imports",
             exports: "exports",
             inflation: "inflation",
@@ -388,6 +395,14 @@ export default function RatingExecutionPage() {
                 FIELD_MAP[slug] ||
                 FIELD_MAP[name] ||
                 FIELD_MAP[id];
+            
+            console.log("MAPPING CHECK", {
+              paramId: p.id,
+              slug,
+              name,
+              mappedKey: key,
+              value: key ? benchmarkData[key] : undefined
+            });
     
             if (key && benchmarkData[key] !== undefined) {
                 nextFactSheet[p.id] = benchmarkData[key];
@@ -450,6 +465,19 @@ export default function RatingExecutionPage() {
           ? Math.max(...history.map(r => r.version || 1)) + 1
           : 1;
 
+        const breakdown = Object.keys(selectedModel.weights).map(pid => {
+            const p = parameters.find(param => param.id === pid);
+            return {
+                id: pid,
+                name: p?.name || pid,
+                category: p?.category || 'Economic',
+                actualValue: calculation.actualValuesUsed[pid],
+                score: calculation.transformedScores[pid],
+                weight: selectedModel.weights[pid],
+                impact: calculation.weightedScores[pid]
+            };
+        });
+
         await saveFactSheet(country.id, factSheet)
         await saveRating({
             countryId: country.id,
@@ -466,18 +494,15 @@ export default function RatingExecutionPage() {
               derivedMetrics: liveDerivedMetrics,
               finalScore: calculation.finalScore,
               rating: calculation.initialRating,
-              breakdown: Object.keys(selectedModel.weights).map(pid => {
-                const p = parameters.find(param => param.id === pid);
-                return {
-                    id: pid,
-                    name: p?.name || pid,
-                    category: p?.category || 'Economic',
-                    actualValue: calculation.actualValuesUsed[pid],
-                    score: calculation.transformedScores[pid],
-                    weight: selectedModel.weights[pid],
-                    impact: calculation.weightedScores[pid]
-                };
-              })
+              breakdown,
+              parameterBreakdown: Object.keys(selectedModel.weights).map(pid => ({
+                parameterId: pid,
+                name: parameters.find(p => p.id === pid)?.name || pid,
+                value: calculation.actualValuesUsed?.[pid] ?? null,
+                score: calculation.transformedScores?.[pid] ?? null,
+                weight: selectedModel.weights?.[pid] ?? null,
+                impact: calculation.weightedScores?.[pid] ?? null
+              }))
             }
         })
         toast({ title: "Rating Session Finalized", description: `Rating for ${country.name} (${executionYear}) has been submitted for approval.` })
@@ -578,7 +603,15 @@ export default function RatingExecutionPage() {
                   derivedMetrics: liveDerivedMetrics,
                   finalScore: calculation.finalScore,
                   rating: calculation.initialRating,
-                  breakdown
+                  breakdown,
+                  parameterBreakdown: breakdown.map(b => ({
+                    parameterId: b.id,
+                    name: b.name,
+                    value: b.actualValue,
+                    score: b.score,
+                    weight: b.weight,
+                    impact: b.impact
+                  }))
                 }
             });
 
@@ -644,7 +677,7 @@ export default function RatingExecutionPage() {
                         </CardHeader>
                         <CardContent className="space-y-6 pt-6">
                             <div className="space-y-4 pb-6 border-b border-dashed">
-                                <p className="text-[10px] font-black uppercase text-primary tracking-widest">Country</p>
+                                <p className="text-[10px] font-black uppercase text-primary tracking-widest">COUNTRY</p>
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Name</label>
                                     <p className="font-black text-slate-900">{country?.name}</p>
@@ -654,7 +687,6 @@ export default function RatingExecutionPage() {
                                     <p className="font-black text-slate-900">{country?.region}</p>
                                 </div>
                             </div>
-                            
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Analytical Model</label>
                                 <p className="font-black text-slate-900">{selectedModel?.name}</p>

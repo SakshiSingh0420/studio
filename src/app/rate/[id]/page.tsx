@@ -446,18 +446,15 @@ export default function RatingExecutionPage() {
         const history = await getRatingHistory(country.id);
         const nextVersion = history.length > 0 ? Math.max(...history.map(r => r.version || 1)) + 1 : 1;
 
-        const breakdown = Object.keys(selectedModel.weights).map(pid => {
-            const p = parameters.find(param => param.id === pid);
-            return {
-                id: pid,
-                name: p?.name || pid,
-                category: p?.category || 'Economic',
-                actualValue: calculation.actualValuesUsed[pid],
-                score: calculation.transformedScores[pid],
-                weight: selectedModel.weights[pid],
-                impact: calculation.weightedScores[pid]
-            };
-        });
+        // CRITICAL: Construct the full parameter breakdown for snapshot audibility
+        const parameterBreakdown = Object.keys(calculation.weightedScores || {}).map(pid => ({
+            parameterId: pid,
+            name: parameters.find(p => p.id === pid)?.name || pid,
+            value: calculation.actualValuesUsed?.[pid] ?? 0,
+            score: calculation.transformedScores?.[pid] ?? 0,
+            weight: selectedModel.weights?.[pid] ?? 0,
+            impact: calculation.weightedScores?.[pid] ?? 0
+        }));
 
         await saveFactSheet(country.id, factSheet)
         await saveRating({
@@ -475,15 +472,7 @@ export default function RatingExecutionPage() {
               derivedMetrics: liveDerivedMetrics,
               finalScore: calculation.finalScore,
               rating: calculation.initialRating,
-              breakdown,
-              parameterBreakdown: breakdown.map(b => ({
-                parameterId: b.id,
-                name: b.name,
-                value: b.actualValue,
-                score: b.score,
-                weight: b.weight,
-                impact: b.impact
-              }))
+              parameterBreakdown // Included for Audit Trail functionality
             }
         })
         toast({ title: "Rating Session Finalized", description: `Rating for ${country.name} has been submitted for approval.` })
@@ -525,13 +514,13 @@ export default function RatingExecutionPage() {
 
             const deterministicSummary = `${country.name} exhibits ${growth > 5 ? 'robust' : growth > 2 ? 'moderate' : 'subdued'} economic growth of ${growth.toFixed(1)}%. The government's debt-to-GDP ratio of ${debtGdp.toFixed(1)}% indicates a ${debtGdp > 80 ? 'high' : debtGdp > 40 ? 'moderate' : 'low'} leverage profile. Overall, the analytical framework suggests a ${calculation.finalScore > 70 ? 'strong' : calculation.finalScore > 40 ? 'stable' : 'vulnerable'} credit position for the ${executionYear} cycle.`;
 
-            const breakdown = Object.keys(selectedModel.weights).map(pid => {
+            const parameterBreakdown = Object.keys(selectedModel.weights).map(pid => {
                 const p = parameters.find(param => param.id === pid);
                 return {
-                    id: pid,
+                    parameterId: pid,
                     name: p?.name || pid,
                     category: p?.category || 'Economic',
-                    actualValue: calculation.actualValuesUsed[pid],
+                    value: calculation.actualValuesUsed[pid],
                     score: calculation.transformedScores[pid],
                     weight: selectedModel.weights[pid],
                     impact: calculation.weightedScores[pid]
@@ -560,7 +549,7 @@ export default function RatingExecutionPage() {
                     fiscalBalance: factSheet['fiscal_balance'] || 0,
                     fxReserves: factSheet['fx_reserves'] || 0
                 },
-                breakdown,
+                breakdown: parameterBreakdown,
                 rationale: rationale || deterministicRationale,
                 summary: deterministicSummary,
                 previousRating: prev,
@@ -585,15 +574,7 @@ export default function RatingExecutionPage() {
                   derivedMetrics: liveDerivedMetrics,
                   finalScore: calculation.finalScore,
                   rating: calculation.initialRating,
-                  breakdown,
-                  parameterBreakdown: breakdown.map(b => ({
-                    parameterId: b.id,
-                    name: b.name,
-                    value: b.actualValue,
-                    score: b.score,
-                    weight: b.weight,
-                    impact: b.impact
-                  }))
+                  parameterBreakdown // Included for Audit Trail functionality
                 }
             });
 

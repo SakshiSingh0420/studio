@@ -32,6 +32,7 @@ export default function RatingDetailPage() {
   const [country, setCountry] = useState<Country | null>(null)
   const [model, setModel] = useState<any>(null)
   const [history, setHistory] = useState<Rating[]>([])
+  const [parameters, setParameters] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -45,13 +46,15 @@ export default function RatingDetailPage() {
         }
         setRating(ratingData)
 
-        const [countries, models, historyData] = await Promise.all([
+        const [countries, models, historyData, paramsData] = await Promise.all([
             getCountries(),
             getModels(),
-            getRatingHistory(ratingData.countryId)
+            getRatingHistory(ratingData.countryId),
+            getParameters()
         ])
 
         setHistory(historyData)
+        setParameters(paramsData)
 
         const demoCountries = [
             { id: 'demo-in', name: "India", region: "Asia" },
@@ -84,13 +87,13 @@ export default function RatingDetailPage() {
   const comparisonData = useMemo(() => {
     if (!rating) return [];
     
-    // Support both the specific requested key and the existing breakdown key
+    // Support both the specific parameterBreakdown key and legacy breakdown keys
     const currentBreakdown = rating.snapshot?.parameterBreakdown || rating.snapshot?.breakdown || [];
     const prevBreakdown = previousRating?.snapshot?.parameterBreakdown || previousRating?.snapshot?.breakdown || [];
     
     return currentBreakdown.map((curr: any) => {
-        // Try to match by parameterId or the standard 'id' field used in some snapshots
-        const prev = prevBreakdown.find((p: any) => (p.parameterId || p.id) === (curr.parameterId || curr.id));
+        const pid = curr.parameterId || curr.id;
+        const prev = prevBreakdown.find((p: any) => (p.parameterId || p.id) === pid);
         
         const currVal = curr.value ?? curr.actualValue ?? 0;
         const prevVal = prev ? (prev.value ?? prev.actualValue ?? 0) : null;
@@ -99,7 +102,7 @@ export default function RatingDetailPage() {
         
         return {
             ...curr,
-            parameterId: curr.parameterId || curr.id,
+            parameterId: pid,
             currentValue: currVal,
             prevValue: prevVal,
             delta,
@@ -107,6 +110,19 @@ export default function RatingDetailPage() {
         };
     });
   }, [rating, previousRating]);
+
+  // Clean rationale text by replacing any internal IDs with human-readable parameter names
+  const cleanRationale = useMemo(() => {
+    if (!rating?.reason || !parameters.length) return rating?.reason || "";
+    let text = rating.reason;
+    parameters.forEach(p => {
+      if (p.id && p.name) {
+        const regex = new RegExp(p.id, 'g');
+        text = text.replace(regex, p.name);
+      }
+    });
+    return text;
+  }, [rating?.reason, parameters]);
 
   if (loading) return <div className="flex h-screen items-center justify-center"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>
   
@@ -117,6 +133,8 @@ export default function RatingDetailPage() {
           <Button onClick={() => router.push('/ratings')}>Return to Archive</Button>
       </div>
   )
+
+  const referenceId = `${(country?.name || 'SOV').substring(0, 3).toUpperCase()}-${rating.year}-V${rating.version || 1}`;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-20">
@@ -140,7 +158,7 @@ export default function RatingDetailPage() {
                     <div className="space-y-4">
                         <div className="flex items-center gap-3">
                             <Badge className="bg-primary px-3 py-1 font-black text-[9px] uppercase tracking-[0.2em] border-none">VERSION {rating.version || 1}</Badge>
-                            <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">Session ID: {rating.id}</span>
+                            <span className="font-black text-[10px] uppercase tracking-[0.2em] text-slate-500">REFERENCE: {referenceId}</span>
                         </div>
                         <h1 className="text-6xl font-black tracking-tighter">{country?.name || 'Sovereign Entity'}</h1>
                         <div className="flex items-center gap-4 text-slate-400 font-bold">
@@ -208,7 +226,7 @@ export default function RatingDetailPage() {
                     <CardContent className="p-10">
                         <div className="prose prose-slate max-w-none">
                             <p className="text-lg font-medium leading-relaxed text-slate-700 italic">
-                                {rating.reason || "No qualitative narrative was provided for this historical session. Credit designation is based purely on the point-in-time quantitative snapshot."}
+                                {cleanRationale || "No qualitative narrative was provided for this historical session. Credit designation is based purely on the point-in-time quantitative snapshot."}
                             </p>
                         </div>
                     </CardContent>

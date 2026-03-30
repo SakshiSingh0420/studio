@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Plus, BarChart3, Target, Activity } from "lucide-react"
+import { Globe, ShieldCheck, Clock, TrendingUp, Loader2, Filter, ChevronDown, Plus, BarChart3, Target, Activity, CheckCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useCollection, useMemoFirebase, useFirestore } from "@/firebase"
@@ -123,9 +123,7 @@ export default function DashboardPage() {
     totalCountries: countries.length,
     ratings: allRatings?.length || 0,
     pending: allRatings?.filter(r => r.approvalStatus === 'pending').length || 0,
-    averageScore: allRatings && allRatings.length > 0 
-      ? (allRatings.reduce((acc, r) => acc + (r.finalScore || 0), 0) / allRatings.length) 
-      : 0
+    completed: allRatings?.filter(r => r.approvalStatus === 'approved').length || 0
   }
 
   const recentRatings = (recentRatingsData || []).map(r => ({
@@ -225,12 +223,12 @@ export default function DashboardPage() {
         </Card>
         <Card className="metric-card border-l-4 border-l-green-500 hover:shadow-lg transition-all duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-[11px] font-black uppercase text-slate-700 tracking-wider">Avg. Confidence</CardTitle>
-            <Target className="w-4 h-4 text-green-500" />
+            <CardTitle className="text-[11px] font-black uppercase text-slate-700 tracking-wider">Completed Ratings</CardTitle>
+            <CheckCircle className="w-4 h-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-4xl font-black text-slate-900">{stats.averageScore.toFixed(1)}%</div>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Portfolio aggregate</p>
+            <div className="text-4xl font-black text-slate-900">{stats.completed}</div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase mt-1">Approved & Finalized</p>
           </CardContent>
         </Card>
       </div>

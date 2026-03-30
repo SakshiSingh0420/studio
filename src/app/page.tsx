@@ -20,9 +20,7 @@ import {
   Legend, 
   ResponsiveContainer,
   ReferenceLine,
-  ReferenceArea,
-  AreaChart,
-  Area
+  ReferenceArea
 } from "recharts"
 import {
   DropdownMenu,
@@ -245,7 +243,7 @@ export default function DashboardPage() {
                 <Activity className="w-6 h-6 text-primary" />
                 Sovereign Rating Transitions
               </CardTitle>
-              <CardDescription className="text-slate-500 font-medium text-base">Comparative historical trend analysis of quantitative risk scores.</CardDescription>
+              <CardDescription className="text-slate-500 font-medium text-base">Comparative historical trend analysis of quantitative risk scores across key analytical tiers.</CardDescription>
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -276,12 +274,6 @@ export default function DashboardPage() {
               {transitionData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={transitionData} margin={{ top: 20, right: 40, left: 10, bottom: 20 }}>
-                    <defs>
-                      <linearGradient id="primeZone" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.05}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                     <XAxis 
                       dataKey="date" 
@@ -300,12 +292,13 @@ export default function DashboardPage() {
                     />
                     <Tooltip content={<CustomTooltip />} />
                     
-                    <ReferenceArea y1={80} y2={100} fill="#10b981" fillOpacity={0.03} />
-                    <ReferenceArea y1={50} y2={80} fill="#f59e0b" fillOpacity={0.02} />
-                    <ReferenceArea y1={0} y2={50} fill="#ef4444" fillOpacity={0.01} />
+                    {/* RISK ZONES */}
+                    <ReferenceArea y1={80} y2={100} fill="#10b981" fillOpacity={0.05} label={{ value: 'PRIME TIER', position: 'insideTopRight', fill: '#10b981', fontSize: 10, fontWeight: 900, dy: 10 }} />
+                    <ReferenceArea y1={50} y2={80} fill="#f59e0b" fillOpacity={0.03} label={{ value: 'INVESTMENT GRADE', position: 'insideTopRight', fill: '#f59e0b', fontSize: 10, fontWeight: 900, dy: 10 }} />
+                    <ReferenceArea y1={0} y2={50} fill="#ef4444" fillOpacity={0.02} label={{ value: 'SPECULATIVE', position: 'insideTopRight', fill: '#ef4444', fontSize: 10, fontWeight: 900, dy: 10 }} />
 
-                    <ReferenceLine y={80} label={{ value: 'PRIME', position: 'insideRight', fill: '#10b981', fontSize: 10, fontWeight: 900, dy: -10 }} stroke="#10b981" strokeDasharray="5 5" strokeOpacity={0.5} />
-                    <ReferenceLine y={50} label={{ value: 'INVESTMENT GRADE', position: 'insideRight', fill: '#f59e0b', fontSize: 10, fontWeight: 900, dy: -10 }} stroke="#f59e0b" strokeDasharray="5 5" strokeOpacity={0.5} />
+                    <ReferenceLine y={80} stroke="#10b981" strokeDasharray="5 5" strokeOpacity={0.5} />
+                    <ReferenceLine y={50} stroke="#f59e0b" strokeDasharray="5 5" strokeOpacity={0.5} />
 
                     <Legend 
                       verticalAlign="top" 

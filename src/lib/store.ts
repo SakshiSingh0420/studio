@@ -135,6 +135,14 @@ export interface Rating {
   committeeComments?: string;
   createdAt: any;
   isSandbox?: boolean;
+  version?: number;
+  snapshot?: {
+    factSheet: Record<string, any>;
+    derivedMetrics: Record<string, number>;
+    finalScore: number;
+    rating: string;
+    breakdown?: any[];
+  };
 }
 
 export const saveRating = (r: any) => addDoc(collection(db, 'ratings'), { ...r, createdAt: serverTimestamp() });
@@ -150,6 +158,8 @@ export const getRatingHistory = (countryId: string) => {
     });
   });
 };
+
+export const getRatingById = (id: string) => getOne<Rating>('ratings', id);
 
 export const updateRatingStatus = async (id: string, status: 'approved' | 'rejected', approvedBy?: string, reason?: string) => {
   const docRef = doc(db, 'ratings', id);

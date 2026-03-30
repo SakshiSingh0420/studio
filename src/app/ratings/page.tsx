@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Search, Download, ExternalLink, RotateCcw, Clock, AlertCircle } from "lucide-react"
+import { Search, Download, ExternalLink, RotateCcw, Clock, AlertCircle, FileText, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -21,8 +21,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { collection, getDocs, query, orderBy } from "firebase/firestore"
+import { collection, getDocs, query, orderBy, where } from "firebase/firestore"
 import { useFirestore } from "@/firebase"
+import Link from "next/link"
 
 const DEMO_COUNTRIES = [
   { id: 'demo-in', name: "India" },
@@ -57,8 +58,12 @@ export default function RatingsHistoryPage() {
         ...DEMO_COUNTRIES.filter(d => !dbCountries.some(c => c.name === d.name))
       ]
 
-      // 2. Query ALL ratings directly from the collection
-      const q = query(collection(db, 'ratings'), orderBy('createdAt', 'desc'))
+      // 2. Query APPROVED ratings directly from the collection
+      const q = query(
+        collection(db, 'ratings'), 
+        where('approvalStatus', '==', 'approved'),
+        orderBy('createdAt', 'desc')
+      )
       const snap = await getDocs(q)
       
       const results = snap.docs.map(doc => {
@@ -112,49 +117,49 @@ export default function RatingsHistoryPage() {
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Rating Archive</h1>
-          <p className="text-muted-foreground mt-1">Audit trail of all sovereign credit rating sessions.</p>
+          <h1 className="text-3xl font-black tracking-tighter text-slate-900">Rating Archive</h1>
+          <p className="text-muted-foreground mt-1 text-lg">Official audit trail of finalized sovereign credit designations.</p>
         </div>
         <div className="flex gap-2">
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" className="text-destructive hover:bg-destructive/10" suppressHydrationWarning>
-                <RotateCcw className="w-4 h-4 mr-2" /> Reset All Data
+              <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10 h-10 px-4" suppressHydrationWarning>
+                <RotateCcw className="w-4 h-4 mr-2" /> Reset Ledger
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This action will permanently delete all historical rating results and dashboard data. Country registries, analytical models, and scales will NOT be affected.
+                  This action will permanently delete all historical rating results and version snapshots. Sovereign registries and analytical models will NOT be affected.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={handleReset} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                  Yes, Clear History
+                  Yes, Clear Archive
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          <Button variant="outline" suppressHydrationWarning>
-            <Download className="w-4 h-4 mr-2" /> Export PDF
+          <Button variant="outline" size="sm" className="h-10 px-4" suppressHydrationWarning>
+            <Download className="w-4 h-4 mr-2" /> Export CSV
           </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
+      <Card className="border-2 shadow-sm">
+        <CardHeader className="bg-slate-50/50 border-b pb-6 px-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <CardTitle>Historical Ledger</CardTitle>
-              <CardDescription>Complete database of quantitative scores and qualitative overrides.</CardDescription>
+              <CardTitle className="text-xl font-black text-slate-900">Historical Ledger</CardTitle>
+              <CardDescription className="font-medium text-slate-500">Database of point-in-time quantitative scores and analyst overrides.</CardDescription>
             </div>
             <div className="relative w-full md:w-80">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                className="pl-10"
-                placeholder="Filter by country or rating..."
+                className="pl-10 h-11 border-2 focus:border-primary transition-all"
+                placeholder="Search sovereigns or ratings..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 suppressHydrationWarning
@@ -162,48 +167,60 @@ export default function RatingsHistoryPage() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-4">
               <Clock className="w-10 h-10 animate-spin text-primary opacity-20" />
-              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Syncing Ledger...</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Syncing analytical archive...</p>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed rounded-xl bg-muted/10">
-              <AlertCircle className="w-12 h-12 text-muted-foreground opacity-20 mb-4" />
-              <p className="text-muted-foreground font-medium">No historical ratings found.</p>
+            <div className="flex flex-col items-center justify-center py-24 border-b">
+              <FileText className="w-12 h-12 text-slate-200 mb-4" />
+              <p className="text-slate-500 font-bold">No finalized rating versions found.</p>
+              <p className="text-xs text-slate-400 mt-1">Pending ratings appear here once they are approved by the committee.</p>
             </div>
           ) : (
             <Table className="financial-table">
-              <TableHeader>
+              <TableHeader className="bg-slate-50/80">
                 <TableRow>
-                  <TableHead>Cycle</TableHead>
-                  <TableHead>Sovereign Entity</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Assigned Rating</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="px-8 font-black uppercase text-[10px] text-slate-500 tracking-widest">Sovereign Entity</TableHead>
+                  <TableHead className="font-black uppercase text-[10px] text-slate-500 tracking-widest text-center">Version</TableHead>
+                  <TableHead className="font-black uppercase text-[10px] text-slate-500 tracking-widest text-center">Finalization Date</TableHead>
+                  <TableHead className="font-black uppercase text-[10px] text-slate-500 tracking-widest">Model Framework</TableHead>
+                  <TableHead className="font-black uppercase text-[10px] text-slate-500 tracking-widest text-center">Final Score</TableHead>
+                  <TableHead className="font-black uppercase text-[10px] text-slate-500 tracking-widest text-center">Assigned Rating</TableHead>
+                  <TableHead className="text-right px-8 font-black uppercase text-[10px] text-slate-500 tracking-widest">Audit</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((rating) => (
-                  <TableRow key={rating.id} className="hover:bg-muted/50">
-                    <TableCell className="font-mono text-xs font-bold text-primary">{rating.year || 'N/A'}</TableCell>
-                    <TableCell className="font-semibold">{rating.countryName}</TableCell>
-                    <TableCell><Badge variant="outline">{getModelName(rating.modelId)}</Badge></TableCell>
-                    <TableCell className="font-bold">{rating.finalScore.toFixed(1)}%</TableCell>
-                    <TableCell>
-                      <span className="font-bold text-primary">{rating.overrideRating || rating.adjustedRating || rating.initialRating}</span>
+                  <TableRow key={rating.id} className="hover:bg-slate-50/50 transition-colors group border-b last:border-0">
+                    <TableCell className="px-8 py-5">
+                      <div className="flex flex-col">
+                        <span className="font-black text-slate-900 group-hover:text-primary transition-colors">{rating.countryName}</span>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{rating.year} Cycle</span>
+                      </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge variant={rating.approvalStatus === 'approved' ? 'default' : rating.approvalStatus === 'pending' ? 'secondary' : 'destructive'}>
-                        {rating.approvalStatus}
+                    <TableCell className="text-center py-5">
+                      <Badge variant="outline" className="font-black text-[10px] border-slate-200">V{rating.version || 1}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center py-5 text-xs font-bold text-slate-500" suppressHydrationWarning>
+                      {rating.createdAt?.toDate ? rating.createdAt.toDate().toLocaleDateString(undefined, { month: 'short', year: 'numeric', day: 'numeric' }) : 'N/A'}
+                    </TableCell>
+                    <TableCell className="py-5">
+                      <Badge variant="secondary" className="font-bold text-[10px] uppercase bg-white border-2 border-slate-100">{getModelName(rating.modelId)}</Badge>
+                    </TableCell>
+                    <TableCell className="text-center py-5 font-black text-slate-900">{rating.finalScore.toFixed(1)}%</TableCell>
+                    <TableCell className="text-center py-5">
+                      <Badge className="font-black text-sm px-4 py-1.5 shadow-lg bg-slate-900 rounded-xl">
+                        {rating.overrideRating || rating.adjustedRating || rating.initialRating}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" suppressHydrationWarning>
-                        <ExternalLink className="w-4 h-4" />
+                    <TableCell className="text-right px-8 py-5">
+                      <Button asChild variant="ghost" size="icon" className="h-10 w-10 hover:bg-primary/10 hover:text-primary rounded-xl" suppressHydrationWarning>
+                        <Link href={`/ratings/${rating.id}`}>
+                          <ChevronRight className="w-5 h-5" />
+                        </Link>
                       </Button>
                     </TableCell>
                   </TableRow>

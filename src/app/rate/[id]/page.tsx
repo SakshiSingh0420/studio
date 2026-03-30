@@ -443,6 +443,13 @@ export default function RatingExecutionPage() {
 
     const handleFinalize = async () => {
         if (!calculation || !country || !selectedModel || !selectedScale) return;
+        
+        // 1. Versioning Logic
+        const history = await getRatingHistory(country.id);
+        const nextVersion = history.length > 0
+          ? Math.max(...history.map(r => r.version || 1)) + 1
+          : 1;
+
         await saveFactSheet(country.id, factSheet)
         await saveRating({
             countryId: country.id,
@@ -452,7 +459,26 @@ export default function RatingExecutionPage() {
             finalScore: calculation.finalScore,
             initialRating: calculation.initialRating,
             approvalStatus: 'pending',
-            reason: rationale
+            reason: rationale,
+            version: nextVersion,
+            snapshot: {
+              factSheet,
+              derivedMetrics: liveDerivedMetrics,
+              finalScore: calculation.finalScore,
+              rating: calculation.initialRating,
+              breakdown: Object.keys(selectedModel.weights).map(pid => {
+                const p = parameters.find(param => param.id === pid);
+                return {
+                    id: pid,
+                    name: p?.name || pid,
+                    category: p?.category || 'Economic',
+                    actualValue: calculation.actualValuesUsed[pid],
+                    score: calculation.transformedScores[pid],
+                    weight: selectedModel.weights[pid],
+                    impact: calculation.weightedScores[pid]
+                };
+              })
+            }
         })
         toast({ title: "Rating Session Finalized", description: `Rating for ${country.name} (${executionYear}) has been submitted for approval.` })
         router.push('/')
@@ -466,6 +492,9 @@ export default function RatingExecutionPage() {
             // Get history to determine change
             const history = await getRatingHistory(country.id);
             const prev = history.length > 0 ? history[0].initialRating : undefined;
+            const nextVersion = history.length > 0
+              ? Math.max(...history.map(r => r.version || 1)) + 1
+              : 1;
             
             let change: 'Upgrade' | 'Downgrade' | 'Stable' = 'Stable';
             if (prev && prev !== calculation.initialRating) {
@@ -487,6 +516,19 @@ export default function RatingExecutionPage() {
             const debtGdp = liveDerivedMetrics['debt_to_gdp'] || 0;
 
             const deterministicSummary = `${country.name} exhibits ${growth > 5 ? 'robust' : growth > 2 ? 'moderate' : 'subdued'} economic growth of ${growth.toFixed(1)}%. The government's debt-to-GDP ratio of ${debtGdp.toFixed(1)}% indicates a ${debtGdp > 80 ? 'high' : debtGdp > 40 ? 'moderate' : 'low'} leverage profile. Overall, the analytical framework suggests a ${calculation.finalScore > 70 ? 'strong' : calculation.finalScore > 40 ? 'stable' : 'vulnerable'} credit position for the ${executionYear} cycle.`;
+
+            const breakdown = Object.keys(selectedModel.weights).map(pid => {
+                const p = parameters.find(param => param.id === pid);
+                return {
+                    id: pid,
+                    name: p?.name || pid,
+                    category: p?.category || 'Economic',
+                    actualValue: calculation.actualValuesUsed[pid],
+                    score: calculation.transformedScores[pid],
+                    weight: selectedModel.weights[pid],
+                    impact: calculation.weightedScores[pid]
+                };
+            });
 
             const reportData = {
                 countryId: country.id,
@@ -510,18 +552,7 @@ export default function RatingExecutionPage() {
                     fiscalBalance: factSheet['fiscal_balance'] || 0,
                     fxReserves: factSheet['fx_reserves'] || 0
                 },
-                breakdown: Object.keys(selectedModel.weights).map(pid => {
-                    const p = parameters.find(param => param.id === pid);
-                    return {
-                        id: pid,
-                        name: p?.name || pid,
-                        category: p?.category || 'Economic',
-                        actualValue: calculation.actualValuesUsed[pid],
-                        score: calculation.transformedScores[pid],
-                        weight: selectedModel.weights[pid],
-                        impact: calculation.weightedScores[pid]
-                    };
-                }),
+                breakdown,
                 rationale: rationale || deterministicRationale,
                 summary: deterministicSummary,
                 previousRating: prev,
@@ -540,7 +571,15 @@ export default function RatingExecutionPage() {
                 finalScore: calculation.finalScore,
                 initialRating: calculation.initialRating,
                 approvalStatus: 'pending',
-                reason: rationale || deterministicRationale
+                reason: rationale || deterministicRationale,
+                version: nextVersion,
+                snapshot: {
+                  factSheet,
+                  derivedMetrics: liveDerivedMetrics,
+                  finalScore: calculation.finalScore,
+                  rating: calculation.initialRating,
+                  breakdown
+                }
             });
 
             toast({ title: "Report Generated", description: "Sovereign report has been archived and finalized." });

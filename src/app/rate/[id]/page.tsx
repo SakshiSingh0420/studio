@@ -167,7 +167,6 @@ export default function RatingExecutionPage() {
     const searchParams = useSearchParams()
     const { toast } = useToast()
     
-    // Robust ID extraction for App Router
     const rawId = params?.id
     const id = useMemo(() => {
         if (!rawId) return null;
@@ -299,6 +298,7 @@ export default function RatingExecutionPage() {
         
         toast({ title: "Analysis Finalized", description: `Aggregate Score: ${result.finalScore.toFixed(1)}%` })
     }
+
     const handleAutoFetch = () => {
         if (!country) {
             toast({ title: "No country selected", variant: "destructive" });
@@ -333,36 +333,23 @@ export default function RatingExecutionPage() {
         }
     
         const FIELD_MAP: Record<string, string> = {
-            // GDP
             gdp: "gdp_nominal",
             gdp_nominal: "gdp_nominal",
             nominal_gdp: "gdp_nominal",
-    
-            // Debt
             government_debt: "government_debt",
             debt: "government_debt",
             total_debt: "government_debt",
             gov_debt: "government_debt",
-    
-            // Revenue
             government_revenue: "government_revenue",
             revenue: "government_revenue",
             gov_revenue: "government_revenue",
-    
-            // Reserves
             fx_reserves: "fx_reserves",
             reserves: "fx_reserves",
             foreign_reserves: "fx_reserves",
-    
-            // Interest
             interest_payments: "interest_payments",
             interest: "interest_payments",
-    
-            // Growth
             gdp_growth: "gdp_growth",
             growth: "gdp_growth",
-    
-            // Others
             imports: "imports",
             exports: "exports",
             inflation: "inflation",
@@ -383,27 +370,11 @@ export default function RatingExecutionPage() {
             if ((p.type || "").toLowerCase() === "derived") return;
     
             const slug = (p.slug || "").toLowerCase();
-    
-            const name = (p.name || "")
-                .toLowerCase()
-                .replace(/\s+/g, "_")
-                .replace(/[^\w]/g, "");
-    
+            const name = (p.name || "").toLowerCase().replace(/\s+/g, "_").replace(/[^\w]/g, "");
             const id = p.id.toLowerCase();
     
-            const key =
-                FIELD_MAP[slug] ||
-                FIELD_MAP[name] ||
-                FIELD_MAP[id];
+            const key = FIELD_MAP[slug] || FIELD_MAP[name] || FIELD_MAP[id];
             
-            console.log("MAPPING CHECK", {
-              paramId: p.id,
-              slug,
-              name,
-              mappedKey: key,
-              value: key ? benchmarkData[key] : undefined
-            });
-    
             if (key && benchmarkData[key] !== undefined) {
                 nextFactSheet[p.id] = benchmarkData[key];
                 filled.add(p.id);
@@ -425,6 +396,21 @@ export default function RatingExecutionPage() {
             const generate = async () => {
                 setIsGeneratingRationale(true);
                 try {
+                    // Map IDs to human-readable names for AI consumption
+                    const toNamedMap = (idMap: Record<string, any>) => {
+                        const named: Record<string, any> = {};
+                        Object.entries(idMap).forEach(([id, val]) => {
+                            const p = parameters.find(p => p.id === id);
+                            if (p) named[p.name] = val;
+                            else named[id] = val;
+                        });
+                        return named;
+                    };
+
+                    const namedFactSheet = toNamedMap(factSheet);
+                    const namedDerived = toNamedMap(liveDerivedMetrics);
+                    const namedWeightedScores = toNamedMap(calculation.weightedScores);
+
                     const res = await generateRatingRationale({
                         country: { 
                             id: country.id, 
@@ -435,12 +421,10 @@ export default function RatingExecutionPage() {
                             population: country.population,
                             gdp: country.nominalGdp
                         },
-                        factSheetData: factSheet as any,
+                        factSheetData: { ...namedFactSheet, ...namedDerived },
                         model: { id: selectedModel.id, name: selectedModel.name, weights: selectedModel.weights },
                         ratingScale: { id: selectedScale.id, name: selectedScale.name, mapping: selectedScale.mapping },
-                        derivedMetrics: liveDerivedMetrics as any,
-                        transformedScores: calculation.transformedScores,
-                        weightedScores: calculation.weightedScores,
+                        weightedScores: namedWeightedScores,
                         finalScore: calculation.finalScore,
                         initialRating: calculation.initialRating
                     });
@@ -454,16 +438,13 @@ export default function RatingExecutionPage() {
             };
             generate();
         }
-    }, [step, calculation, country, selectedModel, selectedScale, factSheet, liveDerivedMetrics, rationale, toast]);
+    }, [step, calculation, country, selectedModel, selectedScale, factSheet, liveDerivedMetrics, rationale, toast, parameters]);
 
     const handleFinalize = async () => {
         if (!calculation || !country || !selectedModel || !selectedScale) return;
         
-        // 1. Versioning Logic
         const history = await getRatingHistory(country.id);
-        const nextVersion = history.length > 0
-          ? Math.max(...history.map(r => r.version || 1)) + 1
-          : 1;
+        const nextVersion = history.length > 0 ? Math.max(...history.map(r => r.version || 1)) + 1 : 1;
 
         const breakdown = Object.keys(selectedModel.weights).map(pid => {
             const p = parameters.find(param => param.id === pid);
@@ -495,17 +476,17 @@ export default function RatingExecutionPage() {
               finalScore: calculation.finalScore,
               rating: calculation.initialRating,
               breakdown,
-              parameterBreakdown: Object.keys(selectedModel.weights).map(pid => ({
-                parameterId: pid,
-                name: parameters.find(p => p.id === pid)?.name || pid,
-                value: calculation.actualValuesUsed?.[pid] ?? null,
-                score: calculation.transformedScores?.[pid] ?? null,
-                weight: selectedModel.weights?.[pid] ?? null,
-                impact: calculation.weightedScores?.[pid] ?? null
+              parameterBreakdown: breakdown.map(b => ({
+                parameterId: b.id,
+                name: b.name,
+                value: b.actualValue,
+                score: b.score,
+                weight: b.weight,
+                impact: b.impact
               }))
             }
         })
-        toast({ title: "Rating Session Finalized", description: `Rating for ${country.name} (${executionYear}) has been submitted for approval.` })
+        toast({ title: "Rating Session Finalized", description: `Rating for ${country.name} has been submitted for approval.` })
         router.push('/')
     }
 
@@ -514,31 +495,33 @@ export default function RatingExecutionPage() {
         
         setIsGenerating(true);
         try {
-            // Get history to determine change
             const history = await getRatingHistory(country.id);
             const prev = history.length > 0 ? history[0].initialRating : undefined;
-            const nextVersion = history.length > 0
-              ? Math.max(...history.map(r => r.version || 1)) + 1
-              : 1;
+            const nextVersion = history.length > 0 ? Math.max(...history.map(r => r.version || 1)) + 1 : 1;
             
             let change: 'Upgrade' | 'Downgrade' | 'Stable' = 'Stable';
             if (prev && prev !== calculation.initialRating) {
-                // Simplified comparison
                 change = calculation.finalScore > (history[0].finalScore || 0) ? 'Upgrade' : 'Downgrade';
             }
 
+            const getParamName = (pid: string) => parameters.find(p => p.id === pid)?.name || pid;
+
             const highStrengths = Object.entries(calculation.transformedScores)
                 .filter(([_, s]: any) => s >= 4)
-                .map(([pid]) => parameters.find(p => p.id === pid)?.name || pid);
+                .map(([pid]) => `${getParamName(pid)} (${calculation.actualValuesUsed[pid]?.toLocaleString()})`);
             
             const lowRisks = Object.entries(calculation.transformedScores)
                 .filter(([_, s]: any) => s <= 2)
-                .map(([pid]) => parameters.find(p => p.id === pid)?.name || pid);
+                .map(([pid]) => `${getParamName(pid)} (${calculation.actualValuesUsed[pid]?.toLocaleString()})`);
 
             const deterministicRationale = `The sovereign credit profile of ${country.name} is primarily supported by its strong performance in ${highStrengths.length > 0 ? highStrengths.join(', ') : 'core fundamental indicators'}. However, the rating is tempered by risks associated with ${lowRisks.length > 0 ? lowRisks.join(', ') : 'ongoing global and internal macroeconomic volatility'}.`;
 
-            const growth = liveDerivedMetrics['gdp_growth'] || factSheet['gdp_growth'] || 0;
-            const debtGdp = liveDerivedMetrics['debt_to_gdp'] || 0;
+            const getValBySlug = (slug: string) => {
+                const p = parameters.find(param => param.slug === slug);
+                return p ? (liveDerivedMetrics[p.id] ?? factSheet[p.id] ?? 0) : 0;
+            };
+            const growth = getValBySlug('gdp_growth');
+            const debtGdp = getValBySlug('debt_to_gdp');
 
             const deterministicSummary = `${country.name} exhibits ${growth > 5 ? 'robust' : growth > 2 ? 'moderate' : 'subdued'} economic growth of ${growth.toFixed(1)}%. The government's debt-to-GDP ratio of ${debtGdp.toFixed(1)}% indicates a ${debtGdp > 80 ? 'high' : debtGdp > 40 ? 'moderate' : 'low'} leverage profile. Overall, the analytical framework suggests a ${calculation.finalScore > 70 ? 'strong' : calculation.finalScore > 40 ? 'stable' : 'vulnerable'} credit position for the ${executionYear} cycle.`;
 
@@ -587,7 +570,6 @@ export default function RatingExecutionPage() {
 
             const reportRef = await saveReport(reportData);
             
-            // Also save the rating to history
             await saveRating({
                 countryId: country.id,
                 modelId: selectedModel.id,

@@ -29,7 +29,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide, Sparkles, FileText, ArrowLeft, Globe, FileOutput } from "lucide-react"
+import { Calculator, ChevronRight, Zap, CheckCircle, Loader2, Settings2, ArrowDownNarrowWide, ArrowUpNarrowWide, Sparkles, FileText, ArrowLeft, Globe, FileOutput, RotateCcw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -185,6 +185,7 @@ export default function RatingExecutionPage() {
     const [executionYear, setExecutionYear] = useState<number>(2025)
     
     const [calculation, setCalculation] = useState<any>(null)
+    const [overrides, setOverrides] = useState<Record<string, number>>({})
     const [isGenerating, setIsGenerating] = useState(false)
     const [isGeneratingRationale, setIsGeneratingRationale] = useState(false)
     const [rationale, setRationale] = useState("")
@@ -282,6 +283,41 @@ export default function RatingExecutionPage() {
         return results;
     }, [factSheet, parameters]);
 
+    // Compute effective scores and rating based on overrides
+    const effectiveCalculation = useMemo(() => {
+        if (!calculation || !selectedModel || !selectedScale) return null;
+
+        let totalImpact = 0;
+        let totalWeight = 0;
+        const effectiveTransformedScores: Record<string, number> = {};
+        const effectiveWeightedScores: Record<string, number> = {};
+
+        Object.keys(selectedModel.weights || {}).forEach(pid => {
+            const modelScore = calculation.transformedScores[pid] || 1;
+            const finalScore = overrides[pid] ?? modelScore;
+            const weight = Number(selectedModel.weights[pid]) || 0;
+            
+            effectiveTransformedScores[pid] = finalScore;
+            const impact = (finalScore / 5) * weight;
+            effectiveWeightedScores[pid] = impact;
+            
+            totalImpact += impact;
+            totalWeight += weight;
+        });
+
+        const finalScore = totalWeight > 0 ? (totalImpact / (totalWeight / 100)) : 0;
+        const sortedMapping = [...(selectedScale.mapping || [])].sort((a, b) => b.minScore - a.minScore);
+        const ratingMatch = sortedMapping.find(m => finalScore >= m.minScore);
+
+        return {
+            ...calculation,
+            transformedScores: effectiveTransformedScores,
+            weightedScores: effectiveWeightedScores,
+            finalScore,
+            initialRating: ratingMatch?.rating || "NR"
+        };
+    }, [calculation, overrides, selectedModel, selectedScale]);
+
     const handleRun = () => {
         if (!selectedModel || !selectedScale || !parameters.length) return
         
@@ -294,6 +330,7 @@ export default function RatingExecutionPage() {
 
         const result = runDynamicRating(numericInputs, selectedModel, selectedScale, parameters); 
         setCalculation(result)
+        setOverrides({}) // Reset overrides on new run
         setStep("calculate")
         
         toast({ title: "Analysis Finalized", description: `Aggregate Score: ${result.finalScore.toFixed(1)}%` })
@@ -391,8 +428,22 @@ export default function RatingExecutionPage() {
         });
     };
 
+    const handleOverrideChange = (pid: string, val: string) => {
+        if (val === "") {
+            const next = { ...overrides };
+            delete next[pid];
+            setOverrides(next);
+            return;
+        }
+        const num = Number(val);
+        if (isNaN(num)) return;
+        if (num < 1 || num > 5) return;
+        setOverrides({ ...overrides, [pid]: num });
+    };
+
     useEffect(() => {
-        if (step === "review" && calculation && country && selectedModel && selectedScale && !rationale) {
+        const calcToUse = effectiveCalculation || calculation;
+        if (step === "review" && calcToUse && country && selectedModel && selectedScale && !rationale) {
             const generate = async () => {
                 setIsGeneratingRationale(true);
                 try {
@@ -409,7 +460,7 @@ export default function RatingExecutionPage() {
 
                     const namedFactSheet = toNamedMap(factSheet);
                     const namedDerived = toNamedMap(liveDerivedMetrics);
-                    const namedWeightedScores = toNamedMap(calculation.weightedScores);
+                    const namedWeightedScores = toNamedMap(calcToUse.weightedScores);
 
                     const res = await generateRatingRationale({
                         country: { 
@@ -425,8 +476,8 @@ export default function RatingExecutionPage() {
                         model: { id: selectedModel.id, name: selectedModel.name, weights: selectedModel.weights },
                         ratingScale: { id: selectedScale.id, name: selectedScale.name, mapping: selectedScale.mapping },
                         weightedScores: namedWeightedScores,
-                        finalScore: calculation.finalScore,
-                        initialRating: calculation.initialRating
+                        finalScore: calcToUse.finalScore,
+                        initialRating: calcToUse.initialRating
                     });
                     setRationale(res.rationale);
                 } catch (error) {
@@ -438,23 +489,30 @@ export default function RatingExecutionPage() {
             };
             generate();
         }
-    }, [step, calculation, country, selectedModel, selectedScale, factSheet, liveDerivedMetrics, rationale, toast, parameters]);
+    }, [step, effectiveCalculation, calculation, country, selectedModel, selectedScale, factSheet, liveDerivedMetrics, rationale, toast, parameters]);
 
     const handleFinalize = async () => {
-        if (!calculation || !country || !selectedModel || !selectedScale) return;
+        const calcToUse = effectiveCalculation || calculation;
+        if (!calcToUse || !country || !selectedModel || !selectedScale) return;
         
         const history = await getRatingHistory(country.id);
         const nextVersion = history.length > 0 ? Math.max(...history.map(r => r.version || 1)) + 1 : 1;
 
-        // CRITICAL: Construct the full parameter breakdown for snapshot audibility
-        const parameterBreakdown = Object.keys(calculation.weightedScores || {}).map(pid => ({
-            parameterId: pid,
-            name: parameters.find(p => p.id === pid)?.name || pid,
-            value: calculation.actualValuesUsed?.[pid] ?? 0,
-            score: calculation.transformedScores?.[pid] ?? 0,
-            weight: selectedModel.weights?.[pid] ?? 0,
-            impact: calculation.weightedScores?.[pid] ?? 0
-        }));
+        // CRITICAL: Construct the full parameter breakdown for snapshot audibility, including overrides
+        const parameterBreakdown = Object.keys(calcToUse.weightedScores || {}).map(pid => {
+            const modelScore = calculation.transformedScores?.[pid] ?? 0;
+            const finalScore = calcToUse.transformedScores?.[pid] ?? 0;
+            return {
+                parameterId: pid,
+                name: parameters.find(p => p.id === pid)?.name || pid,
+                value: calculation.actualValuesUsed?.[pid] ?? 0,
+                modelScore,
+                finalScore,
+                overridden: overrides[pid] !== undefined && overrides[pid] !== modelScore,
+                weight: selectedModel.weights?.[pid] ?? 0,
+                impact: calcToUse.weightedScores?.[pid] ?? 0
+            };
+        });
 
         await saveFactSheet(country.id, factSheet)
         await saveRating({
@@ -462,16 +520,16 @@ export default function RatingExecutionPage() {
             modelId: selectedModel.id,
             scaleId: selectedScale.id,
             year: executionYear,
-            finalScore: calculation.finalScore,
-            initialRating: calculation.initialRating,
+            finalScore: calcToUse.finalScore,
+            initialRating: calcToUse.initialRating,
             approvalStatus: 'pending',
             reason: rationale,
             version: nextVersion,
             snapshot: {
               factSheet,
               derivedMetrics: liveDerivedMetrics,
-              finalScore: calculation.finalScore,
-              rating: calculation.initialRating,
+              finalScore: calcToUse.finalScore,
+              rating: calcToUse.initialRating,
               parameterBreakdown // Included for Audit Trail functionality
             }
         })
@@ -480,7 +538,8 @@ export default function RatingExecutionPage() {
     }
 
     const handleGenerateReport = async () => {
-        if (!calculation || !country || !selectedModel || !selectedScale) return;
+        const calcToUse = effectiveCalculation || calculation;
+        if (!calcToUse || !country || !selectedModel || !selectedScale) return;
         
         setIsGenerating(true);
         try {
@@ -489,17 +548,17 @@ export default function RatingExecutionPage() {
             const nextVersion = history.length > 0 ? Math.max(...history.map(r => r.version || 1)) + 1 : 1;
             
             let change: 'Upgrade' | 'Downgrade' | 'Stable' = 'Stable';
-            if (prev && prev !== calculation.initialRating) {
-                change = calculation.finalScore > (history[0].finalScore || 0) ? 'Upgrade' : 'Downgrade';
+            if (prev && prev !== calcToUse.initialRating) {
+                change = calcToUse.finalScore > (history[0].finalScore || 0) ? 'Upgrade' : 'Downgrade';
             }
 
             const getParamName = (pid: string) => parameters.find(p => p.id === pid)?.name || pid;
 
-            const highStrengths = Object.entries(calculation.transformedScores)
+            const highStrengths = Object.entries(calcToUse.transformedScores)
                 .filter(([_, s]: any) => s >= 4)
                 .map(([pid]) => `${getParamName(pid)} (${calculation.actualValuesUsed[pid]?.toLocaleString()})`);
             
-            const lowRisks = Object.entries(calculation.transformedScores)
+            const lowRisks = Object.entries(calcToUse.transformedScores)
                 .filter(([_, s]: any) => s <= 2)
                 .map(([pid]) => `${getParamName(pid)} (${calculation.actualValuesUsed[pid]?.toLocaleString()})`);
 
@@ -512,7 +571,7 @@ export default function RatingExecutionPage() {
             const growth = getValBySlug('gdp_growth');
             const debtGdp = getValBySlug('debt_to_gdp');
 
-            const deterministicSummary = `${country.name} exhibits ${growth > 5 ? 'robust' : growth > 2 ? 'moderate' : 'subdued'} economic growth of ${growth.toFixed(1)}%. The government's debt-to-GDP ratio of ${debtGdp.toFixed(1)}% indicates a ${debtGdp > 80 ? 'high' : debtGdp > 40 ? 'moderate' : 'low'} leverage profile. Overall, the analytical framework suggests a ${calculation.finalScore > 70 ? 'strong' : calculation.finalScore > 40 ? 'stable' : 'vulnerable'} credit position for the ${executionYear} cycle.`;
+            const deterministicSummary = `${country.name} exhibits ${growth > 5 ? 'robust' : growth > 2 ? 'moderate' : 'subdued'} economic growth of ${growth.toFixed(1)}%. The government's debt-to-GDP ratio of ${debtGdp.toFixed(1)}% indicates a ${debtGdp > 80 ? 'high' : debtGdp > 40 ? 'moderate' : 'low'} leverage profile. Overall, the analytical framework suggests a ${calcToUse.finalScore > 70 ? 'strong' : calcToUse.finalScore > 40 ? 'stable' : 'vulnerable'} credit position for the ${executionYear} cycle.`;
 
             const parameterBreakdown = Object.keys(selectedModel.weights).map(pid => {
                 const p = parameters.find(param => param.id === pid);
@@ -521,9 +580,11 @@ export default function RatingExecutionPage() {
                     name: p?.name || pid,
                     category: p?.category || 'Economic',
                     value: calculation.actualValuesUsed[pid],
-                    score: calculation.transformedScores[pid],
+                    modelScore: calculation.transformedScores[pid],
+                    finalScore: calcToUse.transformedScores[pid],
+                    overridden: overrides[pid] !== undefined && overrides[pid] !== calculation.transformedScores[pid],
                     weight: selectedModel.weights[pid],
-                    impact: calculation.weightedScores[pid]
+                    impact: calcToUse.weightedScores[pid]
                 };
             });
 
@@ -537,8 +598,8 @@ export default function RatingExecutionPage() {
                 scaleId: selectedScale.id,
                 scaleName: selectedScale.name,
                 year: executionYear,
-                finalScore: calculation.finalScore,
-                rating: calculation.initialRating,
+                finalScore: calcToUse.finalScore,
+                rating: calcToUse.initialRating,
                 outlook: 'Stable',
                 status: 'Pending',
                 metrics: {
@@ -564,16 +625,16 @@ export default function RatingExecutionPage() {
                 modelId: selectedModel.id,
                 scaleId: selectedScale.id,
                 year: executionYear,
-                finalScore: calculation.finalScore,
-                initialRating: calculation.initialRating,
+                finalScore: calcToUse.finalScore,
+                initialRating: calcToUse.initialRating,
                 approvalStatus: 'pending',
                 reason: rationale || deterministicRationale,
                 version: nextVersion,
                 snapshot: {
                   factSheet,
                   derivedMetrics: liveDerivedMetrics,
-                  finalScore: calculation.finalScore,
-                  rating: calculation.initialRating,
+                  finalScore: calcToUse.finalScore,
+                  rating: calcToUse.initialRating,
                   parameterBreakdown // Included for Audit Trail functionality
                 }
             });
@@ -596,6 +657,8 @@ export default function RatingExecutionPage() {
             <Button onClick={() => router.push('/countries')}>Return to Registry</Button>
         </div>
     )
+
+    const calcToDisplay = effectiveCalculation || calculation;
 
     return (
         <div className="space-y-8">
@@ -753,11 +816,11 @@ export default function RatingExecutionPage() {
                         </div>
                     )}
 
-                    {step === "calculate" && calculation && (
+                    {step === "calculate" && calcToDisplay && (
                         <Card className="border-2 shadow-sm">
                             <CardHeader className="border-b bg-slate-50/50 py-10 px-12">
                                 <CardTitle className="text-3xl font-black text-slate-900">Quantitative Scoring Breakdown</CardTitle>
-                                <CardDescription className="text-slate-600 font-medium text-lg mt-2">Analytical results mapped from fact sheet variables to framework scoring buckets.</CardDescription>
+                                <CardDescription className="text-slate-600 font-medium text-lg mt-2">Analytical results mapped from fact sheet variables to framework scoring buckets. Analysts can override scores below.</CardDescription>
                             </CardHeader>
                             <CardContent className="p-0">
                                 <Table className="border-b">
@@ -766,7 +829,8 @@ export default function RatingExecutionPage() {
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5 px-12">Parameter</TableHead>
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Value</TableHead>
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5 text-center">Benchmarks</TableHead>
-                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Score</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Model Score</TableHead>
+                                            <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Final Score</TableHead>
                                             <TableHead className="font-black text-slate-900 uppercase text-xs py-5">Weight</TableHead>
                                             <TableHead className="text-right font-black text-slate-900 uppercase text-xs py-5 px-12">Impact</TableHead>
                                         </TableRow>
@@ -775,10 +839,12 @@ export default function RatingExecutionPage() {
                                         {Object.keys(selectedModel?.weights || {}).map((pid) => {
                                             const p = parameters.find(param => param.id === pid)
                                             const val = calculation.actualValuesUsed[pid] ?? 0;
-                                            const score = calculation.transformedScores[pid] || 1;
+                                            const modelScore = calculation.transformedScores[pid] || 1;
+                                            const finalScore = calcToDisplay.transformedScores[pid] || 1;
                                             const weight = Number(selectedModel?.weights[pid]) || 0;
-                                            const impact = calculation.weightedScores[pid] || 0;
+                                            const impact = calcToDisplay.weightedScores[pid] || 0;
                                             const transConfig = selectedModel?.transformations?.[pid] || null;
+                                            const isOverridden = overrides[pid] !== undefined && overrides[pid] !== modelScore;
                                             
                                             return (
                                                 <TableRow key={pid} className="hover:bg-slate-50/50 transition-colors">
@@ -819,9 +885,39 @@ export default function RatingExecutionPage() {
                                                         </TooltipProvider>
                                                     </TableCell>
                                                     <TableCell className="font-bold text-slate-800">
-                                                        <Badge variant="outline" className="text-base font-black border-2 px-3 py-1 bg-white">
-                                                            {score}
+                                                        <Badge variant="outline" className="text-sm font-mono border-dashed opacity-50 bg-slate-50">
+                                                            {modelScore}
                                                         </Badge>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-2">
+                                                            <Input 
+                                                                type="number"
+                                                                min={1}
+                                                                max={5}
+                                                                step={1}
+                                                                value={overrides[pid] ?? modelScore}
+                                                                onChange={(e) => handleOverrideChange(pid, e.target.value)}
+                                                                className={cn(
+                                                                    "h-10 w-16 font-black text-center text-base border-2",
+                                                                    isOverridden ? "border-primary bg-primary/5 text-primary" : "border-slate-200"
+                                                                )}
+                                                            />
+                                                            {isOverridden && (
+                                                                <Button 
+                                                                    variant="ghost" 
+                                                                    size="icon" 
+                                                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                                    onClick={() => {
+                                                                        const next = { ...overrides };
+                                                                        delete next[pid];
+                                                                        setOverrides(next);
+                                                                    }}
+                                                                >
+                                                                    <RotateCcw className="h-4 w-4" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell className="text-slate-700 font-bold text-base">{weight}%</TableCell>
                                                     <TableCell className="text-right font-black text-slate-900 px-12 text-lg">
@@ -835,18 +931,18 @@ export default function RatingExecutionPage() {
                                 <div className="p-12 grid grid-cols-1 md:grid-cols-2 gap-12 bg-white">
                                     <div className="bg-slate-900 text-white p-12 rounded-[2.5rem] shadow-xl flex flex-col justify-between border-b-8 border-slate-700">
                                         <p className="text-xs font-black uppercase tracking-[0.25em] opacity-60">Aggregate Risk Score</p>
-                                        <div className="text-8xl font-black tracking-tighter mt-6">{calculation.finalScore.toFixed(1)}%</div>
+                                        <div className="text-8xl font-black tracking-tighter mt-6">{calcToDisplay.finalScore.toFixed(1)}%</div>
                                     </div>
                                     <div className="bg-primary text-white p-12 rounded-[2.5rem] shadow-xl flex flex-col justify-between border-4 border-white/20 border-b-8 border-primary-foreground/30">
                                         <p className="text-xs font-black uppercase tracking-[0.25em] opacity-60">Implied Rating</p>
-                                        <div className="text-8xl font-black tracking-tighter mt-6">{calculation.initialRating}</div>
+                                        <div className="text-8xl font-black tracking-tighter mt-6">{calcToDisplay.initialRating}</div>
                                     </div>
                                 </div>
                             </CardContent>
                         </Card>
                     )}
 
-                    {step === "review" && calculation && (
+                    {step === "review" && calcToDisplay && (
                         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                             <Card className="border-2 overflow-hidden">
                                 <CardHeader className="bg-slate-900 text-white py-12 px-12 border-b-8 border-slate-800">
@@ -859,11 +955,11 @@ export default function RatingExecutionPage() {
                                         <div className="flex gap-8">
                                             <div className="text-right">
                                                 <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1">Final Score</p>
-                                                <p className="text-4xl font-black tracking-tighter">{calculation.finalScore.toFixed(1)}%</p>
+                                                <p className="text-4xl font-black tracking-tighter">{calcToDisplay.finalScore.toFixed(1)}%</p>
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-1">Implied Rating</p>
-                                                <p className="text-5xl font-black tracking-tighter text-primary-foreground">{calculation.initialRating}</p>
+                                                <p className="text-5xl font-black tracking-tighter text-primary-foreground">{calcToDisplay.initialRating}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -903,7 +999,7 @@ export default function RatingExecutionPage() {
                                                 <CardContent className="p-6">
                                                     <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4">Key Credit Strengths</h4>
                                                     <ul className="space-y-2">
-                                                        {Object.entries(calculation.transformedScores || {})
+                                                        {Object.entries(calcToDisplay.transformedScores || {})
                                                             .filter(([_, score]: any) => score >= 4)
                                                             .slice(0, 3)
                                                             .map(([pid, _]) => (
@@ -919,7 +1015,7 @@ export default function RatingExecutionPage() {
                                                 <CardContent className="p-6">
                                                     <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4">Risk Constraints</h4>
                                                     <ul className="space-y-2">
-                                                        {Object.entries(calculation.transformedScores || {})
+                                                        {Object.entries(calcToDisplay.transformedScores || {})
                                                             .filter(([_, score]: any) => score <= 2)
                                                             .slice(0, 3)
                                                             .map(([pid, _]) => (
